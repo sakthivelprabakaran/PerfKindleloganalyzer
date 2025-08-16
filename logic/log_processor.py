@@ -3,22 +3,26 @@ from PyQt5.QtCore import QThread, pyqtSignal
 from logic.event_parser import DefaultEventParser, SwipeEventParser, SuspendEventParser
 
 class LogProcessor(QThread):
-    """Enhanced log processor with original log storage"""
+    """Enhanced log processor with original log storage and bug fixes."""
     progress_updated = pyqtSignal(int)
+    # The signal now emits a dictionary containing results and an optional filename
     result_ready = pyqtSignal(dict)
     error_occurred = pyqtSignal(str)
 
-    def __init__(self, log_content, mode="default"):
+    # Added filename parameter to handle batch processing safely
+    def __init__(self, log_content, mode="default", filename=None):
         super().__init__()
         self.log_content = log_content
         self.mode = mode
-        # This will hold the results when run synchronously
+        self.filename = filename # Store the filename for this specific job
         self.results_data = []
 
     def run(self):
+        """Processes the log content without blocking the main thread."""
         try:
             self.progress_updated.emit(10)
 
+            # The logic for splitting iterations remains the same
             iterations = re.split(r'ITERATION_(\d+)', self.log_content)[1:]
             if not iterations:
                 iterations = ["01", self.log_content]
@@ -48,15 +52,21 @@ class LogProcessor(QThread):
                 progress = 50 + (idx + 1) * 40 // (total_iterations or 1)
                 self.progress_updated.emit(progress)
 
-            self.results_data = results # Store for synchronous access
+            self.results_data = results
             self.progress_updated.emit(100)
-            self.result_ready.emit({'results': results, 'total_iterations': len(iteration_pairs)})
+            
+            # Emit the results along with the filename to avoid race conditions
+            self.result_ready.emit({
+                'results': results,
+                'total_iterations': len(iteration_pairs),
+                'filename': self.filename
+            })
 
         except Exception as e:
             self.error_occurred.emit(str(e))
 
     def process_iteration(self, lines, iteration_num, mode="default"):
-        """Process a single iteration with the correct suspend parsing"""
+        """Process a single iteration with corrected duration calculation."""
         
         parser_map = {
             "suspend": SuspendEventParser(),
@@ -128,10 +138,11 @@ class LogProcessor(QThread):
             else:
                 return None
 
-        # *** BUG FIX: Reverted to original duration calculation ***
+        # *** BUG FIX: Correctly handle timestamp rollover ***
+        # The timestamps are 6 digits, so the rollover boundary is 1,000,000.
         duration = max_height_end_time - start_time
         if duration < 0:
-            duration = abs(duration)
+            duration += 1000000 # Add the boundary value to correct for rollover
 
         duration_sec = duration / 1000.0
 
