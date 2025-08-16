@@ -76,73 +76,17 @@ class PdfExporter:
             textColor=blue
         )
     
-    def extract_start_digits(self, timestamp_str, mode):
-        """Extract 5-6 digit numbers from timestamps based on mode"""
-        if mode == "suspend":
-            # For suspend mode: def:pbpress:time=650.205:Power button pressed
-            # Extract 650.205 -> 650205
-            match = re.search(r'def:pbpress:time=(\d+\.\d+):Power button pressed', timestamp_str)
-            if match:
-                ts = match.group(1)
-                parts = ts.split('.')
-                if len(parts) == 2:
-                    before_dot = parts[0][-3:]  # Last 3 digits before dot
-                    after_dot = parts[1][:3]    # First 3 digits after dot
-                    return before_dot + after_dot
-        
-        elif mode in ["default", "swipe"]:
-            # For default/swipe: extract from patterns like "button 1 up 123.456"
-            patterns = [
-                r'button 1 up (\d+\.\d+)',
-                r'Sending button 1 down (\d+\.\d+)'
-            ]
-            for pattern in patterns:
-                match = re.search(pattern, timestamp_str)
-                if match:
-                    ts = match.group(1)
-                    parts = ts.split('.')
-                    if len(parts) == 2:
-                        last_3_first = parts[0][-3:]
-                        first_3_second = parts[1][:3]
-                        return last_3_first + first_3_second
-        
-        # Fallback: extract any 5-6 digit sequence
-        digits_match = re.search(r'\b(\d{5,6})\b', timestamp_str)
-        if digits_match:
-            return digits_match.group(1)
-            
-        return None
-    
-    def highlight_log_line(self, line, start_points=None, stop_points=None, mode="default"):
+    def highlight_log_line(self, line, result):
         """Apply highlighting to log lines for start/stop points"""
-        if not start_points:
-            start_points = []
-        if not stop_points:
-            stop_points = []
-            
         highlighted_line = line
         
-        # Highlight start points (5-6 digit sequences from timestamps)
-        start_digits = self.extract_start_digits(line, mode)
-        if start_digits:
-            # Highlight the extracted digits
-            highlighted_line = highlighted_line.replace(
-                start_digits, 
-                f'<font backColor="yellow" color="red"><b>{start_digits}</b></font>'
-            )
-        
-        # Highlight stop points (lines containing end markers and end times)
-        if "update end marker=" in line and "end time=" in line:
-            # This is a stop point line, highlight the end time
-            end_time_match = re.search(r'end time=(\d+)', line)
-            if end_time_match:
-                end_time = end_time_match.group(1)
-                last_6 = end_time[-6:]
-                highlighted_line = highlighted_line.replace(
-                    end_time,
-                    f'<font backColor="lightblue" color="darkblue"><b>{end_time}</b></font>'
-                )
-        
+        if line == result.get('start_line'):
+            highlighted_line = f'<font backColor="yellow">{line}</font>'
+        elif line == result.get('stop_line'):
+            highlighted_line = f'<font backColor="yellow">{line}</font>'
+        elif line == result.get('height_line'):
+            highlighted_line = f'<font backColor="yellow">{line}</font>'
+            
         return highlighted_line
     
     def generate_pdf_report(self, results, output_path, mode="default"):
@@ -276,7 +220,7 @@ class PdfExporter:
             log_lines = original_log.split('\n')
             for line in log_lines:
                 if line.strip():
-                    highlighted_line = self.highlight_log_line(line.strip(), mode=mode)
+                    highlighted_line = self.highlight_log_line(line.strip(), result)
                     # Escape HTML characters for ReportLab
                     safe_line = highlighted_line.replace('<', '&lt;').replace('>', '&gt;')
                     # But keep our highlighting tags

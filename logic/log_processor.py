@@ -3,26 +3,22 @@ from PyQt5.QtCore import QThread, pyqtSignal
 from logic.event_parser import DefaultEventParser, SwipeEventParser, SuspendEventParser
 
 class LogProcessor(QThread):
-    """Enhanced log processor with original log storage and bug fixes."""
+    """Enhanced log processor with original log storage"""
     progress_updated = pyqtSignal(int)
-    # The signal now emits a dictionary containing results and an optional filename
     result_ready = pyqtSignal(dict)
     error_occurred = pyqtSignal(str)
 
-    # Added filename parameter to handle batch processing safely
-    def __init__(self, log_content, mode="default", filename=None):
+    def __init__(self, log_content, mode="default"):
         super().__init__()
         self.log_content = log_content
         self.mode = mode
-        self.filename = filename # Store the filename for this specific job
+        # This will hold the results when run synchronously
         self.results_data = []
 
     def run(self):
-        """Processes the log content without blocking the main thread."""
         try:
             self.progress_updated.emit(10)
 
-            # The logic for splitting iterations remains the same
             iterations = re.split(r'ITERATION_(\d+)', self.log_content)[1:]
             if not iterations:
                 iterations = ["01", self.log_content]
@@ -52,21 +48,15 @@ class LogProcessor(QThread):
                 progress = 50 + (idx + 1) * 40 // (total_iterations or 1)
                 self.progress_updated.emit(progress)
 
-            self.results_data = results
+            self.results_data = results # Store for synchronous access
             self.progress_updated.emit(100)
-            
-            # Emit the results along with the filename to avoid race conditions
-            self.result_ready.emit({
-                'results': results,
-                'total_iterations': len(iteration_pairs),
-                'filename': self.filename
-            })
+            self.result_ready.emit({'results': results, 'total_iterations': len(iteration_pairs)})
 
         except Exception as e:
             self.error_occurred.emit(str(e))
 
     def process_iteration(self, lines, iteration_num, mode="default"):
-        """Process a single iteration with corrected duration calculation."""
+        """Process a single iteration with the correct suspend parsing"""
         
         parser_map = {
             "suspend": SuspendEventParser(),
@@ -132,17 +122,19 @@ class LogProcessor(QThread):
 
         if chosen_marker in end_times_by_marker:
             max_height_end_time = end_times_by_marker[chosen_marker]['time']
+            stop_line = end_times_by_marker[chosen_marker]['line']
         else:
             if end_times_by_marker:
-                max_height_end_time = max(end_times_by_marker.values(), key=lambda x: x['time'])['time']
+                max_end_time_marker = max(end_times_by_marker, key=lambda m: end_times_by_marker[m]['time'])
+                max_height_end_time = end_times_by_marker[max_end_time_marker]['time']
+                stop_line = end_times_by_marker[max_end_time_marker]['line']
             else:
                 return None
 
-        # *** BUG FIX: Correctly handle timestamp rollover ***
-        # The timestamps are 6 digits, so the rollover boundary is 1,000,000.
+        # *** BUG FIX: Reverted to original duration calculation ***
         duration = max_height_end_time - start_time
         if duration < 0:
-            duration += 1000000 # Add the boundary value to correct for rollover
+            duration = abs(duration)
 
         duration_sec = duration / 1000.0
 
@@ -155,6 +147,8 @@ class LogProcessor(QThread):
             'max_height': max_height_info['height'],
             'max_height_waveform': max_height_info['waveform'],
             'start_line': start_line,
+            'stop_line': stop_line,
+            'height_line': max_height_info['line'],
             'all_heights': [{'marker': m, 'height': h['height'], 'waveform': h['waveform']} for m, h in heights_by_marker.items()],
             'mode': mode,
             'all_end_times': end_times_by_marker
