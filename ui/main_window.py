@@ -20,7 +20,7 @@ from logic.log_processor import LogProcessor
 from logic.state_manager import StateManager
 from utils.pdf_export import PdfExporter
 from utils.txt_export import TxtExporter
-
+from utils.excel_export import ExcelExporter
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 
@@ -28,6 +28,7 @@ from openpyxl.styles import Font, Alignment, PatternFill
 class FinalKindleLogAnalyzer(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.state = StateManager()
 
         logging.basicConfig(filename='kindle_log_analyzer.log', level=logging.INFO,
                             format='%(asctime)s - %(levelname)s - %(message)s')
@@ -195,18 +196,6 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.export_zip_btn.setEnabled(False)
         self.export_zip_btn.setVisible(False)
         export_layout.addWidget(self.export_zip_btn)
-        
-        # PDF export
-        self.export_pdf_btn = QPushButton("📄 Export PDF")
-        self.export_pdf_btn.clicked.connect(self.export_pdf_report)
-        self.export_pdf_btn.setEnabled(False)
-        export_layout.addWidget(self.export_pdf_btn)
-
-        # TXT export
-        self.export_txt_btn = QPushButton("📄 Export TXT")
-        self.export_txt_btn.clicked.connect(self.export_txt_report)
-        self.export_txt_btn.setEnabled(False)
-        export_layout.addWidget(self.export_txt_btn)
 
         # PDF export
         self.export_pdf_btn = QPushButton("📄 Export PDF")
@@ -300,14 +289,13 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
         layout.addWidget(QLabel("📦 Waveform Boxes - Table Layout"))
 
-
         # Main results table - optimized for copying to Excel
         self.waveform_table = QTableWidget()
         self.waveform_table.setAlternatingRowColors(True)
         self.waveform_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.waveform_table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.waveform_table)
-        
+
         self.waveform_boxes_tab.setLayout(layout)
         self.tab_widget.addTab(self.waveform_boxes_tab, "📦 Waveform Boxes")
 
@@ -451,6 +439,30 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.waveform_table.setColumnCount(3)
         self.waveform_table.setHorizontalHeaderLabels(["Iteration", "Waveform Data", "Copy"])
 
+        if results_to_display is None:
+            results_to_display = self.state.results
+
+        if not results_to_display:
+            return
+
+        for result in results_to_display:
+            row_position = self.waveform_table.rowCount()
+            self.waveform_table.insertRow(row_position)
+
+            self.waveform_table.setItem(row_position, 0, QTableWidgetItem(str(result['iteration'])))
+
+            waveform_data = []
+            for idx, height_info in enumerate(result['all_heights'], 1):
+                height = height_info['height']
+                waveform = height_info['waveform']
+                waveform_data.append(f"{idx}. Height - {height}, Waveform - {waveform}")
+
+            self.waveform_table.setItem(row_position, 1, QTableWidgetItem("\n".join(waveform_data)))
+
+            copy_btn = QPushButton("📋 Copy")
+            copy_btn.clicked.connect(lambda checked, r=result: self.copy_iteration_data(r))
+            self.waveform_table.setCellWidget(row_position, 2, copy_btn)
+
         self.waveform_table.resizeColumnsToContents()
         self.waveform_table.resizeRowsToContents()
 
@@ -500,6 +512,9 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
     def export_pdf_report(self):
         """Export a single PDF report."""
+        if not self.state.results:
+            QMessageBox.warning(self, "Warning", "No results to export.")
+            return
 
         test_case_name = self.test_case_input.text().strip()
         if not test_case_name:
@@ -512,7 +527,17 @@ class FinalKindleLogAnalyzer(QMainWindow):
         if not pdf_path:
             return
 
+        pdf_exporter = PdfExporter()
+        success, message = pdf_exporter.export_pdf_report(self.state.results, pdf_path, self.state.current_mode)
+        if success:
+            QMessageBox.information(self, "Success", message)
+        else:
+            QMessageBox.critical(self, "Error", message)
+            logging.error(message)
 
+    def export_txt_report(self):
+        """Export a single TXT report."""
+        if not self.state.results:
             QMessageBox.warning(self, "Warning", "No results to export.")
             return
 
@@ -526,6 +551,14 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
         if not txt_path:
             return
+
+        txt_exporter = TxtExporter()
+        success, message = txt_exporter.export_txt_report(self.state.results, txt_path)
+        if success:
+            QMessageBox.information(self, "Success", message)
+        else:
+            QMessageBox.critical(self, "Error", message)
+            logging.error(message)
 
     def add_iteration(self):
         """Add iteration data"""
@@ -561,7 +594,8 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
     def on_single_processing_complete(self, data):
         """Handle single processing completion"""
-
+        self.state.results = data['results']
+        self.state.processed_test_cases.add(self.test_case_input.text().strip())
         self.progress_bar.setVisible(False)
         self.update_all_displays()
         self.enable_export_buttons()
@@ -569,6 +603,13 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
     def on_batch_processing_complete(self, data, filename):
         """Handle batch processing completion for a single file."""
+        self.state.batch_results[filename] = data['results']
+        # Check if all files have been processed
+        if len(self.state.batch_results) == len(self.state.loaded_files):
+            self.progress_bar.setVisible(False)
+            self.update_all_displays()
+            self.enable_export_buttons()
+            self.status_label.setText(f"Processed {len(self.state.loaded_files)} files")
 
     def on_processing_error(self, error):
         """Handle processing error"""
@@ -584,11 +625,15 @@ class FinalKindleLogAnalyzer(QMainWindow):
         if self.processing_mode.currentText() == "Batch Files":
             self.update_summary_display()
             self.update_batch_display()
-            
+            results_to_display = [item for sublist in self.state.batch_results.values() for item in sublist]
             self.update_results_table(results_to_display)
             self.update_heights_table(results_to_display)
             self.update_waveform_boxes(results_to_display)
         else:
+            self.update_summary_display(self.state.results)
+            self.update_results_table(self.state.results)
+            self.update_waveform_boxes(self.state.results)
+            self.update_heights_table(self.state.results)
             self.batch_results_text.clear()
 
 
@@ -596,16 +641,17 @@ class FinalKindleLogAnalyzer(QMainWindow):
         """Update summary display"""
         if self.processing_mode.currentText() == "Batch Files":
             self.summary_text.clear()
-
+            for filename, results in self.state.batch_results.items():
                 self.generate_summary_for_file(filename, results)
             return
 
         if results_to_display is None:
+            results_to_display = self.state.results
 
         if not results_to_display:
             self.summary_text.clear()
             return
-          
+
         self.generate_summary_for_file(self.test_case_input.text() or "Single Entry", results_to_display)
 
     def generate_summary_for_file(self, filename, results):
@@ -651,7 +697,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.results_table.setRowCount(0)
         if self.processing_mode.currentText() == "Batch Files":
             self.results_table.setColumnCount(1)
-            
+            for filename, results in self.state.batch_results.items():
                 row_position = self.results_table.rowCount()
                 self.results_table.insertRow(row_position)
                 header_item = QTableWidgetItem(f"📄 {filename}")
@@ -662,7 +708,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
                 self.populate_results_table(results)
         else:
             if results_to_display is None:
-
+                results_to_display = self.state.results
             self.populate_results_table(results_to_display)
 
     def populate_results_table(self, results):
@@ -693,7 +739,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.heights_table.setRowCount(0)
         if self.processing_mode.currentText() == "Batch Files":
             self.heights_table.setColumnCount(1)
-
+            for filename, results in self.state.batch_results.items():
                 row_position = self.heights_table.rowCount()
                 self.heights_table.insertRow(row_position)
                 header_item = QTableWidgetItem(f"📄 {filename}")
@@ -704,7 +750,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
                 self.populate_heights_table(results)
         else:
             if results_to_display is None:
-
+                results_to_display = self.state.results
             self.populate_heights_table(results_to_display)
 
     def populate_heights_table(self, results):
@@ -732,12 +778,12 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
     def update_batch_display(self):
         """Update batch results display"""
-
+        if not self.state.batch_results:
             return
 
         batch_html = "<h2>📁 Batch Processing Results</h2>"
 
-
+        for filename, results in self.state.batch_results.items():
             batch_html += f"<h3>📄 {filename}</h3>"
             if results:
                 batch_html += "<table border='1' cellpadding='5' cellspacing='0'>"
@@ -762,7 +808,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
     def export_zip_report(self):
         """Export all reports into a single ZIP file."""
-        
+        if not self.state.batch_results:
             QMessageBox.warning(self, "Warning", "No results to export.")
             return
 
@@ -772,6 +818,17 @@ class FinalKindleLogAnalyzer(QMainWindow):
         if not zip_path:
             return
 
+        pdf_exporter = PdfExporter()
+        success, message = pdf_exporter.export_zip_report(self.state.batch_results, zip_path, self.state.current_mode)
+        if success:
+            QMessageBox.information(self, "Success", message)
+        else:
+            QMessageBox.critical(self, "Error", message)
+            logging.error(message)
+
+    def export_excel_with_highlighting(self):
+        """Export to Excel with the new format."""
+        if self.processing_mode.currentText() != "Batch Files" or not self.state.batch_results:
             QMessageBox.warning(self, "Warning", "Excel export is only available for batch processing.")
             return
 
@@ -784,6 +841,13 @@ class FinalKindleLogAnalyzer(QMainWindow):
         if not filename:
             return
 
+        excel_exporter = ExcelExporter()
+        success, message = excel_exporter.export_excel_with_highlighting(self.state.batch_results, filename)
+        if success:
+            QMessageBox.information(self, "Success", message)
+        else:
+            QMessageBox.critical(self, "Error", message)
+            logging.error(message)
 
     def select_batch_files(self):
         """Select files for batch processing"""
@@ -806,6 +870,12 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
     def process_batch_files(self):
         """Process batch files"""
+        if not self.state.loaded_files:
+            return
+
+        self.status_label.setText("Processing batch files...")
+        self.state.batch_results.clear()
+        self.state.threads = []
 
         for file_path in self.state.loaded_files:
             try:
@@ -813,7 +883,11 @@ class FinalKindleLogAnalyzer(QMainWindow):
                     content = f.read()
 
                 filename = os.path.basename(file_path)
-
+                self.state.current_processing_file = filename
+                # Process content using log processor
+                log_processor = LogProcessor(content, self.state.current_mode)
+                log_processor.result_ready.connect(lambda data, fn=filename: self.on_batch_processing_complete(data, fn))
+                self.state.threads.append(log_processor)
                 log_processor.start()
 
             except Exception as e:
@@ -829,6 +903,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
     def clear_all(self):
         """Clear all data"""
+        self.state.clear_all()
 
         self.log_input.clear()
         self.files_list.clear()
@@ -836,7 +911,6 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.results_table.setRowCount(0)
         self.heights_table.setRowCount(0)
         self.batch_results_text.clear()
-
         self.waveform_table.setRowCount(0)
 
         self.export_zip_btn.setEnabled(False)
