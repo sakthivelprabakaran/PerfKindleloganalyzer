@@ -1,4 +1,3 @@
-
 """
 TXT Export Module for Kindle Log Analyzer
 Exports iteration logs in original input format
@@ -144,6 +143,14 @@ class TxtExporter:
             
         except Exception as e:
             return False, f"Error creating comparison file: {str(e)}"
+
+    def export_txt_report(self, results, filename):
+        """Export a single TXT report."""
+        try:
+            self.export_txt_file(results, filename)
+            return True, f"Report successfully exported to {filename}"
+        except Exception as e:
+            return False, f"Failed to create TXT file: {e}"
 
 
 def test_txt_export():
