@@ -1,37 +1,61 @@
 #!/bin/bash
 
-# Navigate to the KindleLogAnalyzer directory
-cd "$(dirname "$0")"
+# Script to push Kindle Log Analyzer code to a new branch
 
-# Check if git is installed
-if ! command -v git &> /dev/null
-then
-    echo "Git is not installed. Please install Git and try again."
+echo "=== Kindle Log Analyzer - Git Branch Creation Script ==="
+echo
+
+# Check if we're in the right directory
+if [ ! -d "logic" ] || [ ! -d "ui" ] || [ ! -d "utils" ]; then
+    echo "Error: Please run this script from the KindleLogAnalyzer directory"
+    echo "Current directory: $(pwd)"
     exit 1
 fi
 
-# Initialize git repository if it doesn't exist
-if [ ! -d ".git" ]; then
-    echo "Initializing new Git repository..."
+echo "Current directory: $(pwd)"
+echo
+
+# Check if we're in a git repository
+if ! git rev-parse --git-dir > /dev/null 2>&1; then
+    echo "Initializing git repository..."
     git init
-    git checkout -b main
-else
-    echo "Git repository already exists."
+    echo
 fi
 
 # Add all files
-echo "Adding all files to Git..."
+echo "Adding all files to git..."
 git add .
+echo
 
-# Check if there are any changes to commit
-if ! git diff-index --quiet HEAD --; then
+# Check if we have changes to commit
+if ! git diff --cached --quiet; then
     echo "Committing changes..."
-    git commit -m "Initial commit of Kindle Log Analyzer"
+    git commit -m "Initial commit with Kindle Log Analyzer code"
+    echo
 else
-    echo "No changes to commit."
+    echo "No changes to commit"
+    echo
 fi
 
-echo "Setup complete. To push to a remote repository, you need to:"
-echo "1. Create a repository on GitHub/GitLab/Bitbucket"
-echo "2. Add the remote: git remote add origin <repository-url>"
-echo "3. Push the changes: git push -u origin main"
+# Create and switch to new branch
+echo "Creating and switching to new branch: kindle-log-analyzer-branch"
+git checkout -b kindle-log-analyzer-branch
+echo
+
+# Show current branch
+echo "Current branch: $(git rev-parse --abbrev-ref HEAD)"
+echo
+
+# Show status
+echo "Git status:"
+git status
+echo
+
+echo "=== Script completed successfully! ==="
+echo
+echo "To push to a remote repository, run:"
+echo "  git push -u origin kindle-log-analyzer-branch"
+echo
+echo "If you haven't set up a remote repository yet, run:"
+echo "  git remote add origin <repository-url>"
+echo "  git push -u origin kindle-log-analyzer-branch"
