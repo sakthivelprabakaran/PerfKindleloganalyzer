@@ -122,9 +122,12 @@ class LogProcessor(QThread):
 
         if chosen_marker in end_times_by_marker:
             max_height_end_time = end_times_by_marker[chosen_marker]['time']
+            stop_line = end_times_by_marker[chosen_marker]['line']
         else:
             if end_times_by_marker:
-                max_height_end_time = max(end_times_by_marker.values(), key=lambda x: x['time'])['time']
+                max_end_time_marker = max(end_times_by_marker, key=lambda m: end_times_by_marker[m]['time'])
+                max_height_end_time = end_times_by_marker[max_end_time_marker]['time']
+                stop_line = end_times_by_marker[max_end_time_marker]['line']
             else:
                 return None
 
@@ -144,6 +147,8 @@ class LogProcessor(QThread):
             'max_height': max_height_info['height'],
             'max_height_waveform': max_height_info['waveform'],
             'start_line': start_line,
+            'stop_line': stop_line,
+            'height_line': max_height_info['line'],
             'all_heights': [{'marker': m, 'height': h['height'], 'waveform': h['waveform']} for m, h in heights_by_marker.items()],
             'mode': mode,
             'all_end_times': end_times_by_marker
