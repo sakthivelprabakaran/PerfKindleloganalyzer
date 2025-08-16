@@ -31,7 +31,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.current_iteration = 1
         self.all_iterations_data = ""
         self.test_case_title = ""
-        self.batch_results = []
+        self.batch_results = {}
         self.loaded_files = []
         self.current_mode = "default"
         self.dark_mode = False
@@ -201,6 +201,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.export_zip_btn = QPushButton("📦 Export All Reports (ZIP)")
         self.export_zip_btn.clicked.connect(self.export_zip_report)
         self.export_zip_btn.setEnabled(False)
+        self.export_zip_btn.setVisible(False)
         export_layout.addWidget(self.export_zip_btn)
 
         # Excel export
@@ -438,19 +439,17 @@ class FinalKindleLogAnalyzer(QMainWindow):
         QApplication.clipboard().setText(data)
         self.status_label.setText(f"Copied Iteration {result['iteration']} waveform data to clipboard")
 
-    def update_waveform_boxes(self):
+    def update_waveform_boxes(self, results_to_display=None):
         """Update the waveform boxes grid"""
-        if not self.results and not self.batch_results:
+        if results_to_display is None:
+            results_to_display = self.results
+
+        if not results_to_display:
             return
 
         # Clear existing boxes
         for i in reversed(range(self.waveform_grid.count())):
             self.waveform_grid.itemAt(i).widget().setParent(None)
-
-        results_to_display = self.results
-        if self.processing_mode.currentText() == "Batch Files":
-            results_to_display = [item for sublist in [batch['results'] for batch in self.batch_results] for item in sublist]
-
 
         # Add new boxes in a 3-column grid
         cols = 3
@@ -701,9 +700,13 @@ class FinalKindleLogAnalyzer(QMainWindow):
         if mode == "Single Entry":
             self.single_group.setVisible(True)
             self.batch_group.setVisible(False)
+            self.export_zip_btn.setVisible(False)
+            self.export_excel_btn.setVisible(True)
         else:
             self.single_group.setVisible(False)
             self.batch_group.setVisible(True)
+            self.export_zip_btn.setVisible(True)
+            self.export_excel_btn.setVisible(False)
 
     def add_iteration(self):
         """Add iteration data"""
@@ -752,10 +755,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
             self.results = data['results']
             self.processed_test_cases.add(self.test_case_input.text().strip())
         else:
-            self.batch_results.append({
-                'filename': self.current_processing_file,
-                'results': data['results']
-            })
+            self.batch_results[self.current_processing_file] = data['results']
 
         self.progress_bar.setVisible(False)
         self.update_all_displays()
@@ -770,31 +770,65 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
     def update_all_displays(self):
         """Update all result displays"""
-        if not self.results and not self.batch_results:
-            return
+        # Clear existing tabs beyond the default ones
+        while self.tab_widget.count() > 5:
+            self.tab_widget.removeTab(5)
 
-        # Update summary
-        self.update_summary_display()
-
-        # Update main results table
-        self.update_results_table()
-
-        # Update waveform boxes - NEW
-        self.update_waveform_boxes()
-
-        # Update heights and waveforms table
-        self.update_heights_table()
-
-        # Update batch display
-        self.update_batch_display()
-
-    def update_summary_display(self):
-        """Update summary display"""
-        results_to_display = self.results
         if self.processing_mode.currentText() == "Batch Files":
-            results_to_display = [item for sublist in [batch['results'] for batch in self.batch_results] for item in sublist]
+            if not self.batch_results:
+                return
+
+            for filename, results in self.batch_results.items():
+                self.create_and_populate_batch_tab(filename, results)
+        else:
+            if not self.results:
+                return
+            # Update summary
+            self.update_summary_display(self.results)
+
+            # Update main results table
+            self.update_results_table(self.results)
+
+            # Update waveform boxes - NEW
+            self.update_waveform_boxes(self.results)
+
+            # Update heights and waveforms table
+            self.update_heights_table(self.results)
+
+    def create_and_populate_batch_tab(self, filename, results):
+        """Creates a new tab for a batch result and populates it."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+
+        # Create widgets for the tab
+        summary_text = QTextEdit()
+        summary_text.setReadOnly(True)
+
+        results_table = QTableWidget()
+        results_table.setAlternatingRowColors(True)
+        results_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        results_table.horizontalHeader().setStretchLastSection(True)
+
+        # Add widgets to layout
+        layout.addWidget(QLabel(f"Summary for {filename}"))
+        layout.addWidget(summary_text)
+        layout.addWidget(QLabel("Detailed Results"))
+        layout.addWidget(results_table)
+
+        self.tab_widget.addTab(tab, f"📄 {filename}")
+
+        # Populate the widgets
+        self.update_summary_display(results, summary_text)
+        self.update_results_table(results, results_table)
+
+
+    def update_summary_display(self, results_to_display, summary_widget=None):
+        """Update summary display"""
+        if not summary_widget:
+            summary_widget = self.summary_text
 
         if not results_to_display:
+            summary_widget.clear()
             return
 
         total_iterations = len(results_to_display)
@@ -842,88 +876,88 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
         summary_html += "</table>"
 
-        self.summary_text.setHtml(summary_html)
+        summary_widget.setHtml(summary_html)
 
-    def update_results_table(self):
+    def update_results_table(self, results_to_display, table_widget=None):
         """Update main results table - optimized for copying"""
-        results_to_display = self.results
-        if self.processing_mode.currentText() == "Batch Files":
-            results_to_display = [item for sublist in [batch['results'] for batch in self.batch_results] for item in sublist]
+        if not table_widget:
+            table_widget = self.results_table
 
         if not results_to_display:
+            table_widget.setRowCount(0)
             return
 
-        self.results_table.setRowCount(len(results_to_display))
-        self.results_table.setColumnCount(8)
+        table_widget.setRowCount(len(results_to_display))
+        table_widget.setColumnCount(8)
 
         headers = ['Iteration', 'Duration (seconds)', 'Start Time', 'Stop Time',
                    'Marker', 'Height', 'Selected Waveform', 'Mode']
-        self.results_table.setHorizontalHeaderLabels(headers)
+        table_widget.setHorizontalHeaderLabels(headers)
 
         for i, result in enumerate(results_to_display):
-            self.results_table.setItem(i, 0, QTableWidgetItem(str(result['iteration'])))
+            table_widget.setItem(i, 0, QTableWidgetItem(str(result['iteration'])))
 
             # Duration is already in seconds
             duration_item = QTableWidgetItem(f"{result['duration']:.3f}")
             duration_item.setBackground(QBrush(QColor(255, 255, 0, 100)))  # Yellow highlighting
-            self.results_table.setItem(i, 1, duration_item)
+            table_widget.setItem(i, 1, duration_item)
 
-            self.results_table.setItem(i, 2, QTableWidgetItem(str(result['start'])))
-            self.results_table.setItem(i, 3, QTableWidgetItem(str(result['stop'])))
-            self.results_table.setItem(i, 4, QTableWidgetItem(str(result['marker'])))
-            self.results_table.setItem(i, 5, QTableWidgetItem(str(result['max_height'])))
+            table_widget.setItem(i, 2, QTableWidgetItem(str(result['start'])))
+            table_widget.setItem(i, 3, QTableWidgetItem(str(result['stop'])))
+            table_widget.setItem(i, 4, QTableWidgetItem(str(result['marker'])))
+            table_widget.setItem(i, 5, QTableWidgetItem(str(result['max_height'])))
 
             # Highlight selected waveform
             waveform_item = QTableWidgetItem(result['max_height_waveform'])
             waveform_item.setBackground(QBrush(QColor(255, 255, 0, 100)))  # Yellow highlighting
-            self.results_table.setItem(i, 6, waveform_item)
+            table_widget.setItem(i, 6, waveform_item)
 
-            self.results_table.setItem(i, 7, QTableWidgetItem(result['mode']))
+            table_widget.setItem(i, 7, QTableWidgetItem(result['mode']))
 
-        self.results_table.resizeColumnsToContents()
+        table_widget.resizeColumnsToContents()
 
-    def update_heights_table(self):
+    def update_heights_table(self, results_to_display, table_widget=None):
         """Update detailed heights and waveforms table"""
-        results_to_display = self.results
-        if self.processing_mode.currentText() == "Batch Files":
-            results_to_display = [item for sublist in [batch['results'] for batch in self.batch_results] for item in sublist]
+        if not table_widget:
+            table_widget = self.heights_table
 
         if not results_to_display:
+            table_widget.setRowCount(0)
             return
 
         # Count total rows needed
         total_rows = sum(len(result['all_heights']) for result in results_to_display)
 
-        self.heights_table.setRowCount(total_rows)
-        self.heights_table.setColumnCount(6)
+        table_widget.setRowCount(total_rows)
+        table_widget.setColumnCount(6)
 
         headers = ['Iteration', 'Marker', 'Height', 'Waveform', 'Selected', 'End Time']
-        self.heights_table.setHorizontalHeaderLabels(headers)
+        table_widget.setHorizontalHeaderLabels(headers)
 
         row = 0
         for result in results_to_display:
             for height_info in result['all_heights']:
-                self.heights_table.setItem(row, 0, QTableWidgetItem(str(result['iteration'])))
-                self.heights_table.setItem(row, 1, QTableWidgetItem(str(height_info['marker'])))
-                self.heights_table.setItem(row, 2, QTableWidgetItem(str(height_info['height'])))
-                self.heights_table.setItem(row, 3, QTableWidgetItem(height_info['waveform']))
+                table_widget.setItem(row, 0, QTableWidgetItem(str(result['iteration'])))
+                table_widget.setItem(row, 1, QTableWidgetItem(str(height_info['marker'])))
+                table_widget.setItem(row, 2, QTableWidgetItem(str(height_info['height'])))
+                table_widget.setItem(row, 3, QTableWidgetItem(height_info['waveform']))
 
                 # Mark if this is the selected marker for final calculation
                 is_selected = str(height_info['marker']) == str(result['marker'])
                 selected_item = QTableWidgetItem("✓" if is_selected else "")
                 if is_selected:
                     selected_item.setBackground(QBrush(QColor(255, 255, 0, 150)))  # Yellow highlighting
-                self.heights_table.setItem(row, 4, selected_item)
+                table_widget.setItem(row, 4, selected_item)
 
                 # Show end time if available
                 end_time = ""
                 if 'all_end_times' in result and str(height_info['marker']) in result['all_end_times']:
                     end_time = str(result['all_end_times'][str(height_info['marker'])]['time'])
-                self.heights_table.setItem(row, 5, QTableWidgetItem(end_time))
+                table_widget.setItem(row, 5, QTableWidgetItem(end_time))
 
                 row += 1
 
-        self.heights_table.resizeColumnsToContents()
+        table_widget.resizeColumnsToContents()
 
     def export_zip_report(self):
         """Export all reports into a single ZIP file."""
@@ -944,20 +978,20 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
         try:
             with zipfile.ZipFile(zip_path, 'w') as zipf:
-                # Generate PDF report
-                pdf_exporter = PdfExporter()
-                pdf_path = f"{test_case_name}_report.pdf"
-                results_to_export = self.results if self.results else [item for sublist in [b['results'] for b in self.batch_results] for item in sublist]
-                pdf_exporter.generate_pdf_report(results_to_export, pdf_path, self.current_mode)
-                zipf.write(pdf_path, os.path.basename(pdf_path))
-                os.remove(pdf_path)
+                for filename, results in self.batch_results.items():
+                    # Generate PDF report
+                    pdf_exporter = PdfExporter()
+                    pdf_path = f"{Path(filename).stem}_report.pdf"
+                    pdf_exporter.generate_pdf_report(results, pdf_path, self.current_mode)
+                    zipf.write(pdf_path, os.path.basename(pdf_path))
+                    os.remove(pdf_path)
 
-                # Generate TXT report
-                txt_exporter = TxtExporter()
-                txt_path = f"{test_case_name}_report.txt"
-                txt_exporter.export_txt_file(results_to_export, txt_path)
-                zipf.write(txt_path, os.path.basename(txt_path))
-                os.remove(txt_path)
+                    # Generate TXT report
+                    txt_exporter = TxtExporter()
+                    txt_path = f"{Path(filename).stem}_report.txt"
+                    txt_exporter.export_txt_file(results, txt_path)
+                    zipf.write(txt_path, os.path.basename(txt_path))
+                    os.remove(txt_path)
 
             QMessageBox.information(self, "Success", f"Reports successfully exported to {zip_path}")
 
@@ -969,7 +1003,14 @@ class FinalKindleLogAnalyzer(QMainWindow):
         """Export to Excel with yellow highlighting"""
         results_to_export = self.results
         if self.processing_mode.currentText() == "Batch Files":
-            results_to_export = [item for sublist in [batch['results'] for batch in self.batch_results] for item in sublist]
+            # In batch mode, we'll export the currently selected tab
+            current_tab_index = self.tab_widget.currentIndex()
+            if current_tab_index < 5: # Not a batch tab
+                QMessageBox.warning(self, "Warning", "Please select a batch result tab to export.")
+                return
+
+            filename = self.tab_widget.tabText(current_tab_index).replace("📄 ", "")
+            results_to_export = self.batch_results.get(filename)
 
         if not results_to_export:
             QMessageBox.warning(self, "Warning", "No results to export")
@@ -1126,7 +1167,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
             return
 
         self.status_label.setText("Processing batch files...")
-        self.batch_results = []
+        self.batch_results.clear()
 
         for file_path in self.loaded_files:
             try:
@@ -1147,36 +1188,6 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
         self.processed_test_cases.add(test_case)
         self.status_label.setText(f"Processed {len(self.loaded_files)} files")
-
-    def update_batch_display(self):
-        """Update batch results display"""
-        if not self.batch_results:
-            return
-
-        batch_html = "<h2>📁 Batch Processing Results</h2>"
-
-        for batch in self.batch_results:
-            batch_html += f"<h3>📄 {batch['filename']}</h3>"
-            if batch['results']:
-                batch_html += "<table border='1' cellpadding='5' cellspacing='0'>"
-                batch_html += "<tr><th>Iteration</th><th>Duration</th><th>Start</th><th>Stop</th><th>Height</th><th>Waveform</th></tr>"
-
-                for result in batch['results']:
-                    batch_html += f"""
-                    <tr>
-                    <td>{result['iteration']}</td>
-                    <td style='background-color: yellow;'>{result['duration']:.3f}</td>
-                    <td>{result['start']}</td>
-                    <td>{result['stop']}</td>
-                    <td>{result['max_height']}</td>
-                    <td style='background-color: yellow;'>{result['max_height_waveform']}</td>
-                    </tr>
-                    """
-                batch_html += "</table><br>"
-            else:
-                batch_html += "<p>No valid results found.</p>"
-
-        self.batch_results_text.setHtml(batch_html)
 
     def enable_export_buttons(self):
         """Enable export buttons"""
@@ -1216,7 +1227,14 @@ class FinalKindleLogAnalyzer(QMainWindow):
         """Generate and save the waveform plot"""
         results_to_plot = self.results
         if self.processing_mode.currentText() == "Batch Files":
-            results_to_plot = [item for sublist in [batch['results'] for batch in self.batch_results] for item in sublist]
+            # In batch mode, we'll plot the currently selected tab
+            current_tab_index = self.tab_widget.currentIndex()
+            if current_tab_index < 5: # Not a batch tab
+                QMessageBox.warning(self, "Warning", "Please select a batch result tab to plot.")
+                return
+
+            filename = self.tab_widget.tabText(current_tab_index).replace("📄 ", "")
+            results_to_plot = self.batch_results.get(filename)
 
         if not results_to_plot:
             QMessageBox.warning(self, "Warning", "No results to generate a plot.")
