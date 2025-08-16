@@ -17,8 +17,10 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QColor, QBrush
 
 from logic.log_processor import LogProcessor
+from logic.state_manager import StateManager
 from utils.pdf_export import PdfExporter
 from utils.txt_export import TxtExporter
+
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 
@@ -26,16 +28,6 @@ from openpyxl.styles import Font, Alignment, PatternFill
 class FinalKindleLogAnalyzer(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.results = []
-        self.current_iteration = 1
-        self.all_iterations_data = ""
-        self.test_case_title = ""
-        self.batch_results = {}
-        self.loaded_files = []
-        self.current_mode = "default"
-        self.dark_mode = False
-        self.processed_test_cases = set()
-        self.threads = []
 
         logging.basicConfig(filename='kindle_log_analyzer.log', level=logging.INFO,
                             format='%(asctime)s - %(levelname)s - %(message)s')
@@ -216,6 +208,18 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.export_txt_btn.setEnabled(False)
         export_layout.addWidget(self.export_txt_btn)
 
+        # PDF export
+        self.export_pdf_btn = QPushButton("📄 Export PDF")
+        self.export_pdf_btn.clicked.connect(self.export_pdf_report)
+        self.export_pdf_btn.setEnabled(False)
+        export_layout.addWidget(self.export_pdf_btn)
+
+        # TXT export
+        self.export_txt_btn = QPushButton("📄 Export TXT")
+        self.export_txt_btn.clicked.connect(self.export_txt_report)
+        self.export_txt_btn.setEnabled(False)
+        export_layout.addWidget(self.export_txt_btn)
+
         # Excel export
         self.export_excel_btn = QPushButton("📊 Export Excel")
         self.export_excel_btn.clicked.connect(self.export_excel_with_highlighting)
@@ -296,6 +300,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
         layout.addWidget(QLabel("📦 Waveform Boxes - Table Layout"))
 
+
         # Main results table - optimized for copying to Excel
         self.waveform_table = QTableWidget()
         self.waveform_table.setAlternatingRowColors(True)
@@ -340,14 +345,14 @@ class FinalKindleLogAnalyzer(QMainWindow):
         box.setFrameStyle(QFrame.StyledPanel)
         box.setStyleSheet(f"""
         QFrame {{
-            border: 2px solid {'#0d7377' if not self.dark_mode else '#14a085'};
+            border: 2px solid {'#0d7377' if not self.state.dark_mode else '#14a085'};
             border-radius: 8px;
             padding: 10px;
             margin: 5px;
-            background-color: {'#ffffff' if not self.dark_mode else '#404040'};
+            background-color: {'#ffffff' if not self.state.dark_mode else '#404040'};
         }}
         QLabel {{
-            color: {'#333333' if not self.dark_mode else '#ffffff'};
+            color: {'#333333' if not self.state.dark_mode else '#ffffff'};
             font-size: 12px;
         }}
         """)
@@ -359,9 +364,9 @@ class FinalKindleLogAnalyzer(QMainWindow):
         header_label.setStyleSheet(f"""
             font-weight: bold;
             font-size: 14px;
-            color: {'#0d7377' if not self.dark_mode else '#14a085'};
+            color: {'#0d7377' if not self.state.dark_mode else '#14a085'};
             padding: 5px;
-            background-color: {'#f0f8ff' if not self.dark_mode else '#2b2b2b'};
+            background-color: {'#f0f8ff' if not self.state.dark_mode else '#2b2b2b'};
             border-radius: 4px;
         """)
         header_label.setAlignment(Qt.AlignCenter)
@@ -446,263 +451,30 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.waveform_table.setColumnCount(3)
         self.waveform_table.setHorizontalHeaderLabels(["Iteration", "Waveform Data", "Copy"])
 
-        if results_to_display is None:
-            results_to_display = self.results
-        
-        if not results_to_display:
-            return
-
-        for result in results_to_display:
-            row_position = self.waveform_table.rowCount()
-            self.waveform_table.insertRow(row_position)
-            
-            self.waveform_table.setItem(row_position, 0, QTableWidgetItem(str(result['iteration'])))
-            
-            waveform_data = []
-            for idx, height_info in enumerate(result['all_heights'], 1):
-                height = height_info['height']
-                waveform = height_info['waveform']
-                waveform_data.append(f"{idx}. Height - {height}, Waveform - {waveform}")
-            
-            self.waveform_table.setItem(row_position, 1, QTableWidgetItem("\n".join(waveform_data)))
-
-            copy_btn = QPushButton("📋 Copy")
-            copy_btn.clicked.connect(lambda checked, r=result: self.copy_iteration_data(r))
-            self.waveform_table.setCellWidget(row_position, 2, copy_btn)
-
         self.waveform_table.resizeColumnsToContents()
         self.waveform_table.resizeRowsToContents()
 
     def toggle_dark_mode(self, checked):
         """Toggle between dark and light mode"""
-        self.dark_mode = checked
+        self.state.dark_mode = checked
         self.setup_styling()
         # Update waveform boxes with new styling
-        if self.results or self.batch_results:
+        if self.state.results or self.state.batch_results:
             self.update_waveform_boxes()
 
     def setup_styling(self):
         """Setup styling with dark mode support"""
-        if self.dark_mode:
-            # Dark mode styling
-            self.setStyleSheet("""
-                QMainWindow {
-                    background-color: #2b2b2b;
-                    color: #ffffff;
-                }
-                QWidget {
-                    background-color: #2b2b2b;
-                    color: #ffffff;
-                }
-                QGroupBox {
-                    font-weight: bold;
-                    border: 2px solid #555555;
-                    border-radius: 8px;
-                    margin: 8px 0px;
-                    padding-top: 10px;
-                    background-color: #3c3c3c;
-                    color: #ffffff;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 8px 0 8px;
-                    color: #ffffff;
-                }
-                QPushButton {
-                    background-color: #0d7377;
-                    color: white;
-                    border: none;
-                    padding: 10px 16px;
-                    border-radius: 6px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: #14a085;
-                }
-                QPushButton:pressed {
-                    background-color: #0a5d61;
-                }
-                QPushButton:disabled {
-                    background-color: #555555;
-                    color: #888888;
-                }
-                QLineEdit, QTextEdit, QComboBox {
-                    border: 2px solid #555555;
-                    border-radius: 4px;
-                    padding: 8px;
-                    background-color: #404040;
-                    color: #ffffff;
-                }
-                QLineEdit:focus, QTextEdit:focus, QComboBox:focus {
-                    border-color: #0d7377;
-                }
-                QTableWidget {
-                    background-color: #404040;
-                    alternate-background-color: #4a4a4a;
-                    color: #ffffff;
-                    gridline-color: #555555;
-                    selection-background-color: #0d7377;
-                    selection-color: #ffffff;
-                }
-                QHeaderView::section {
-                    background-color: #0d7377;
-                    color: white;
-                    padding: 8px;
-                    border: 1px solid #555555;
-                    font-weight: bold;
-                }
-                QTabWidget::pane {
-                    border: 1px solid #555555;
-                    background-color: #3c3c3c;
-                }
-                QTabBar::tab {
-                    background: #505050;
-                    color: #ffffff;
-                    padding: 10px 16px;
-                    margin-right: 2px;
-                    border-top-left-radius: 4px;
-                    border-top-right-radius: 4px;
-                }
-                QTabBar::tab:selected {
-                    background: #0d7377;
-                    color: white;
-                }
-                QListWidget {
-                    background-color: #404040;
-                    color: #ffffff;
-                    border: 2px solid #555555;
-                }
-                QProgressBar {
-                    border: 2px solid #555555;
-                    border-radius: 5px;
-                    background-color: #404040;
-                }
-                QProgressBar::chunk {
-                    background-color: #0d7377;
-                    border-radius: 3px;
-                }
-                QScrollArea {
-                    background-color: #3c3c3c;
-                    border: 1px solid #555555;
-                }
-                QLabel {
-                    color: #ffffff;
-                }
-            """)
+        if self.state.dark_mode:
+            with open('ui/dark_mode.qss', 'r') as f:
+                self.setStyleSheet(f.read())
         else:
-            # Light mode styling
-            self.setStyleSheet("""
-                QMainWindow {
-                    background-color: #f0f0f0;
-                    color: #333333;
-                }
-                QWidget {
-                    background-color: #f0f0f0;
-                    color: #333333;
-                }
-                QGroupBox {
-                    font-weight: bold;
-                    border: 2px solid #cccccc;
-                    border-radius: 8px;
-                    margin: 8px 0px;
-                    padding-top: 10px;
-                    background-color: #ffffff;
-                    color: #333333;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 8px 0 8px;
-                    color: #333333;
-                }
-                QPushButton {
-                    background-color: #4a90e2;
-                    color: white;
-                    border: none;
-                    padding: 10px 16px;
-                    border-radius: 6px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: #357abd;
-                }
-                QPushButton:pressed {
-                    background-color: #2968a3;
-                }
-                QPushButton:disabled {
-                    background-color: #cccccc;
-                    color: #666666;
-                }
-                QLineEdit, QTextEdit, QComboBox {
-                    border: 2px solid #cccccc;
-                    border-radius: 4px;
-                    padding: 8px;
-                    background-color: #ffffff;
-                    color: #333333;
-                }
-                QLineEdit:focus, QTextEdit:focus, QComboBox:focus {
-                    border-color: #4a90e2;
-                }
-                QTableWidget {
-                    background-color: #ffffff;
-                    alternate-background-color: #f8f9fa;
-                    color: #333333;
-                    gridline-color: #e1e8ed;
-                    selection-background-color: #4a90e2;
-                    selection-color: #ffffff;
-                }
-                QHeaderView::section {
-                    background-color: #4a90e2;
-                    color: white;
-                    padding: 8px;
-                    border: 1px solid #cccccc;
-                    font-weight: bold;
-                }
-                QTabWidget::pane {
-                    border: 1px solid #cccccc;
-                    background-color: #ffffff;
-                    border-radius: 4px;
-                }
-                QTabBar::tab {
-                    background: #e0e0e0;
-                    color: #333333;
-                    padding: 10px 16px;
-                    margin-right: 2px;
-                    border-top-left-radius: 4px;
-                    border-top-right-radius: 4px;
-                }
-                QTabBar::tab:selected {
-                    background: #4a90e2;
-                    color: white;
-                }
-                QListWidget {
-                    background-color: #ffffff;
-                    color: #333333;
-                    border: 2px solid #cccccc;
-                }
-                QProgressBar {
-                    border: 2px solid #cccccc;
-                    border-radius: 5px;
-                    background-color: #ffffff;
-                }
-                QProgressBar::chunk {
-                    background-color: #4a90e2;
-                    border-radius: 3px;
-                }
-                QScrollArea {
-                    background-color: #ffffff;
-                    border: 1px solid #cccccc;
-                }
-                QLabel {
-                    color: #333333;
-                }
-            """)
+            with open('ui/light_mode.qss', 'r') as f:
+                self.setStyleSheet(f.read())
 
     def on_calculation_mode_changed(self):
         """Handle calculation mode change"""
         mode_map = {0: "default", 1: "swipe", 2: "suspend"}
-        self.current_mode = mode_map.get(self.calc_mode_combo.currentIndex(), "default")
+        self.state.current_mode = mode_map.get(self.calc_mode_combo.currentIndex(), "default")
         self.status_label.setText(f"Mode: {self.calc_mode_combo.currentText()}")
 
     def on_processing_mode_changed(self, mode):
@@ -728,10 +500,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
     def export_pdf_report(self):
         """Export a single PDF report."""
-        if not self.results:
-            QMessageBox.warning(self, "Warning", "No results to export.")
-            return
-        
+
         test_case_name = self.test_case_input.text().strip()
         if not test_case_name:
             QMessageBox.warning(self, "Warning", "Please enter a test case name.")
@@ -743,17 +512,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         if not pdf_path:
             return
 
-        try:
-            pdf_exporter = PdfExporter()
-            pdf_exporter.generate_pdf_report(self.results, pdf_path, self.current_mode)
-            QMessageBox.information(self, "Success", f"Report successfully exported to {pdf_path}")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to create PDF file: {e}")
-            logging.error(f"Failed to create PDF file: {e}")
 
-    def export_txt_report(self):
-        """Export a single TXT report."""
-        if not self.results:
             QMessageBox.warning(self, "Warning", "No results to export.")
             return
 
@@ -768,14 +527,6 @@ class FinalKindleLogAnalyzer(QMainWindow):
         if not txt_path:
             return
 
-        try:
-            txt_exporter = TxtExporter()
-            txt_exporter.export_txt_file(self.results, txt_path)
-            QMessageBox.information(self, "Success", f"Report successfully exported to {txt_path}")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to create TXT file: {e}")
-            logging.error(f"Failed to create TXT file: {e}")
-
     def add_iteration(self):
         """Add iteration data"""
         log_content = self.log_input.toPlainText().strip()
@@ -783,18 +534,18 @@ class FinalKindleLogAnalyzer(QMainWindow):
             QMessageBox.warning(self, "Warning", "Please enter log data")
             return
 
-        iteration_header = f"\nITERATION_{self.current_iteration:02d}\n"
-        self.all_iterations_data += iteration_header + log_content + "\n"
+        iteration_header = f"\nITERATION_{self.state.current_iteration:02d}\n"
+        self.state.all_iterations_data += iteration_header + log_content + "\n"
 
-        self.current_iteration += 1
+        self.state.current_iteration += 1
         self.log_input.clear()
         self.process_all_btn.setEnabled(True)
 
-        self.status_label.setText(f"Added iteration {self.current_iteration-1}. Ready for next iteration.")
+        self.status_label.setText(f"Added iteration {self.state.current_iteration-1}. Ready for next iteration.")
 
     def process_all_iterations(self):
         """Process all iterations"""
-        if not self.all_iterations_data:
+        if not self.state.all_iterations_data:
             QMessageBox.warning(self, "Warning", "No iterations to process")
             return
 
@@ -802,7 +553,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.status_label.setText("Processing iterations...")
 
         # Create and start log processor thread
-        self.log_processor = LogProcessor(self.all_iterations_data, self.current_mode)
+        self.log_processor = LogProcessor(self.state.all_iterations_data, self.state.current_mode)
         self.log_processor.progress_updated.connect(self.progress_bar.setValue)
         self.log_processor.result_ready.connect(self.on_single_processing_complete)
         self.log_processor.error_occurred.connect(self.on_processing_error)
@@ -810,8 +561,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
     def on_single_processing_complete(self, data):
         """Handle single processing completion"""
-        self.results = data['results']
-        self.processed_test_cases.add(self.test_case_input.text().strip())
+
         self.progress_bar.setVisible(False)
         self.update_all_displays()
         self.enable_export_buttons()
@@ -819,13 +569,6 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
     def on_batch_processing_complete(self, data, filename):
         """Handle batch processing completion for a single file."""
-        self.batch_results[filename] = data['results']
-        # Check if all files have been processed
-        if len(self.batch_results) == len(self.loaded_files):
-            self.progress_bar.setVisible(False)
-            self.update_all_displays()
-            self.enable_export_buttons()
-            self.status_label.setText(f"Processed {len(self.loaded_files)} files")
 
     def on_processing_error(self, error):
         """Handle processing error"""
@@ -835,21 +578,17 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
     def update_all_displays(self):
         """Update all result displays"""
-        if not self.results and not self.batch_results:
+        if not self.state.results and not self.state.batch_results:
             return
 
         if self.processing_mode.currentText() == "Batch Files":
             self.update_summary_display()
             self.update_batch_display()
-            results_to_display = [item for sublist in self.batch_results.values() for item in sublist]
+            
             self.update_results_table(results_to_display)
             self.update_heights_table(results_to_display)
             self.update_waveform_boxes(results_to_display)
         else:
-            self.update_summary_display(self.results)
-            self.update_results_table(self.results)
-            self.update_waveform_boxes(self.results)
-            self.update_heights_table(self.results)
             self.batch_results_text.clear()
 
 
@@ -857,17 +596,16 @@ class FinalKindleLogAnalyzer(QMainWindow):
         """Update summary display"""
         if self.processing_mode.currentText() == "Batch Files":
             self.summary_text.clear()
-            for filename, results in self.batch_results.items():
+
                 self.generate_summary_for_file(filename, results)
             return
 
         if results_to_display is None:
-            results_to_display = self.results
 
         if not results_to_display:
             self.summary_text.clear()
             return
-        
+          
         self.generate_summary_for_file(self.test_case_input.text() or "Single Entry", results_to_display)
 
     def generate_summary_for_file(self, filename, results):
@@ -913,7 +651,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.results_table.setRowCount(0)
         if self.processing_mode.currentText() == "Batch Files":
             self.results_table.setColumnCount(1)
-            for filename, results in self.batch_results.items():
+            
                 row_position = self.results_table.rowCount()
                 self.results_table.insertRow(row_position)
                 header_item = QTableWidgetItem(f"📄 {filename}")
@@ -924,7 +662,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
                 self.populate_results_table(results)
         else:
             if results_to_display is None:
-                results_to_display = self.results
+
             self.populate_results_table(results_to_display)
 
     def populate_results_table(self, results):
@@ -955,7 +693,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.heights_table.setRowCount(0)
         if self.processing_mode.currentText() == "Batch Files":
             self.heights_table.setColumnCount(1)
-            for filename, results in self.batch_results.items():
+
                 row_position = self.heights_table.rowCount()
                 self.heights_table.insertRow(row_position)
                 header_item = QTableWidgetItem(f"📄 {filename}")
@@ -966,7 +704,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
                 self.populate_heights_table(results)
         else:
             if results_to_display is None:
-                results_to_display = self.results
+
             self.populate_heights_table(results_to_display)
 
     def populate_heights_table(self, results):
@@ -994,12 +732,12 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
     def update_batch_display(self):
         """Update batch results display"""
-        if not self.batch_results:
+
             return
 
         batch_html = "<h2>📁 Batch Processing Results</h2>"
 
-        for filename, results in self.batch_results.items():
+
             batch_html += f"<h3>📄 {filename}</h3>"
             if results:
                 batch_html += "<table border='1' cellpadding='5' cellspacing='0'>"
@@ -1024,7 +762,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
     def export_zip_report(self):
         """Export all reports into a single ZIP file."""
-        if not self.batch_results:
+        
             QMessageBox.warning(self, "Warning", "No results to export.")
             return
 
@@ -1034,32 +772,6 @@ class FinalKindleLogAnalyzer(QMainWindow):
         if not zip_path:
             return
 
-        try:
-            with zipfile.ZipFile(zip_path, 'w') as zipf:
-                for filename, results in self.batch_results.items():
-                    # Generate PDF report
-                    pdf_exporter = PdfExporter()
-                    pdf_path = f"{Path(filename).stem}_report.pdf"
-                    pdf_exporter.generate_pdf_report(results, pdf_path, self.current_mode)
-                    zipf.write(pdf_path, os.path.basename(pdf_path))
-                    os.remove(pdf_path)
-
-                    # Generate TXT report
-                    txt_exporter = TxtExporter()
-                    txt_path = f"{Path(filename).stem}_report.txt"
-                    txt_exporter.export_txt_file(results, txt_path)
-                    zipf.write(txt_path, os.path.basename(txt_path))
-                    os.remove(txt_path)
-
-            QMessageBox.information(self, "Success", f"Reports successfully exported to {zip_path}")
-
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to create ZIP file: {e}")
-            logging.error(f"Failed to create ZIP file: {e}")
-
-    def export_excel_with_highlighting(self):
-        """Export to Excel with the new format."""
-        if self.processing_mode.currentText() != "Batch Files" or not self.batch_results:
             QMessageBox.warning(self, "Warning", "Excel export is only available for batch processing.")
             return
 
@@ -1072,92 +784,6 @@ class FinalKindleLogAnalyzer(QMainWindow):
         if not filename:
             return
 
-        try:
-            workbook = openpyxl.Workbook()
-            sheet = workbook.active
-            sheet.title = "Batch Results"
-
-            # Find max number of iterations for header
-            max_iterations = 0
-            for results in self.batch_results.values():
-                if len(results) > max_iterations:
-                    max_iterations = len(results)
-            
-            # Create headers
-            headers = ["Test Case Name"]
-            for i in range(1, max_iterations + 1):
-                headers.append(f"IT_{i:02d}")
-            headers.extend(["Average", "Waveform Data"])
-            sheet.append(headers)
-
-            # Write data rows
-            for test_case_name, results in self.batch_results.items():
-                row_data = [test_case_name]
-                durations = [r['duration'] for r in results]
-                
-                # Add iteration durations
-                for i in range(max_iterations):
-                    if i < len(durations):
-                        row_data.append(f"{durations[i]:.3f}")
-                    else:
-                        row_data.append("")
-                
-                # Add average
-                avg_duration = sum(durations) / len(durations) if durations else 0
-                row_data.append(f"{avg_duration:.3f}")
-                
-                # Add waveform data
-                row_data.append(self.get_waveform_summary(results))
-
-                sheet.append(row_data)
-
-            # Auto-size columns
-            for column in sheet.columns:
-                max_length = 0
-                column_letter = column[0].column_letter
-                for cell in column:
-                    try:
-                        if cell.value:
-                            length = len(str(cell.value))
-                            if length > max_length:
-                                max_length = length
-                    except:
-                        pass
-                adjusted_width = min(max_length + 2, 50)
-                sheet.column_dimensions[column_letter].width = adjusted_width
-
-            workbook.save(filename)
-            QMessageBox.information(self, "Success", f"Excel file saved to:\n{filename}")
-
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to save Excel file: {str(e)}")
-            
-    def get_waveform_summary(self, results):
-        """Get a summary of waveform data for a set of results."""
-        if not results:
-            return ""
-
-        patterns = {}
-        for result in results:
-            waveform_data = []
-            for idx, height_info in enumerate(result['all_heights'], 1):
-                height = height_info['height']
-                waveform = height_info['waveform']
-                waveform_data.append(f"{idx}. Height - {height}, Waveform - {waveform}")
-            
-            pattern_key = "\n".join(waveform_data)
-            if pattern_key not in patterns:
-                patterns[pattern_key] = []
-            patterns[pattern_key].append(f"IT_{result['iteration']:02d}")
-        
-        summary = []
-        for pattern, iterations in patterns.items():
-            if len(iterations) == len(results):
-                summary.append("Same pattern for all iterations:\n" + pattern)
-            else:
-                summary.append(f"Pattern for {', '.join(iterations)}:\n" + pattern)
-        
-        return "\n\n".join(summary)
 
     def select_batch_files(self):
         """Select files for batch processing"""
@@ -1166,7 +792,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
             "Log Files (*.log *.txt);;All Files (*)"
         )
         if files:
-            self.loaded_files = files
+            self.state.loaded_files = files
             self.files_list.clear()
             for file in files:
                 self.files_list.addItem(os.path.basename(file))
@@ -1174,30 +800,20 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
     def clear_batch_files(self):
         """Clear selected batch files"""
-        self.loaded_files = []
+        self.state.loaded_files = []
         self.files_list.clear()
         self.process_batch_btn.setEnabled(False)
 
     def process_batch_files(self):
         """Process batch files"""
-        if not self.loaded_files:
-            return
 
-        self.status_label.setText("Processing batch files...")
-        self.batch_results.clear()
-        self.threads = []
-
-        for file_path in self.loaded_files:
+        for file_path in self.state.loaded_files:
             try:
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     content = f.read()
 
                 filename = os.path.basename(file_path)
-                self.current_processing_file = filename
-                # Process content using log processor
-                log_processor = LogProcessor(content, self.current_mode)
-                log_processor.result_ready.connect(lambda data, fn=filename: self.on_batch_processing_complete(data, fn))
-                self.threads.append(log_processor)
+
                 log_processor.start()
 
             except Exception as e:
@@ -1213,12 +829,6 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
     def clear_all(self):
         """Clear all data"""
-        self.results = []
-        self.batch_results = {}
-        self.loaded_files = []
-        self.all_iterations_data = ""
-        self.current_iteration = 1
-        self.processed_test_cases.clear()
 
         self.log_input.clear()
         self.files_list.clear()
@@ -1227,7 +837,6 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.heights_table.setRowCount(0)
         self.batch_results_text.clear()
 
-        # Clear waveform boxes
         self.waveform_table.setRowCount(0)
 
         self.export_zip_btn.setEnabled(False)

@@ -86,7 +86,7 @@ class PdfExporter:
             highlighted_line = f'<font backColor="yellow">{line}</font>'
         elif line == result.get('height_line'):
             highlighted_line = f'<font backColor="yellow">{line}</font>'
-            
+
         return highlighted_line
     
     def generate_pdf_report(self, results, output_path, mode="default"):
@@ -120,7 +120,7 @@ class PdfExporter:
             
             # Process each iteration
             for idx, result in enumerate(results):
-                story.extend(self.process_iteration_for_pdf(result, mode))
+                story.extend(self.process_iteration_for_pdf(result))
                 if idx < len(results) - 1:  # Add page break between iterations
                     story.append(PageBreak())
             
@@ -131,6 +131,30 @@ class PdfExporter:
         except Exception as e:
             return False, f"Error generating PDF: {str(e)}"
     
+    def export_pdf_report(self, results, output_path, current_mode):
+        """Export a single PDF report."""
+        try:
+            self.generate_pdf_report(results, output_path, current_mode)
+            return True, f"Report successfully exported to {output_path}"
+        except Exception as e:
+            return False, f"Failed to create PDF file: {e}"
+
+    def export_zip_report(self, batch_results, zip_path, current_mode):
+        """Export all reports into a single ZIP file."""
+        try:
+            with zipfile.ZipFile(zip_path, 'w') as zipf:
+                for filename, results in batch_results.items():
+                    # Generate PDF report
+                    pdf_path = f"{Path(filename).stem}_report.pdf"
+                    self.generate_pdf_report(results, pdf_path, current_mode)
+                    zipf.write(pdf_path, os.path.basename(pdf_path))
+                    os.remove(pdf_path)
+
+            return True, f"Reports successfully exported to {zip_path}"
+
+        except Exception as e:
+            return False, f"Failed to create ZIP file: {e}"
+
     def create_table_of_contents(self, results):
         """Create table of contents with iteration summary"""
         story = []
@@ -201,7 +225,7 @@ class PdfExporter:
         
         return story
     
-    def process_iteration_for_pdf(self, result, mode):
+    def process_iteration_for_pdf(self, result):
         """Process a single iteration for PDF output"""
         story = []
         
