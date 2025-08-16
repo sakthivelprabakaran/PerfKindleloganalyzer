@@ -36,6 +36,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.current_mode = "default"
         self.dark_mode = False
         self.processed_test_cases = set()
+        self.threads = []
 
         logging.basicConfig(filename='kindle_log_analyzer.log', level=logging.INFO,
                             format='%(asctime)s - %(levelname)s - %(message)s')
@@ -91,12 +92,12 @@ class FinalKindleLogAnalyzer(QMainWindow):
         settings_layout = QVBoxLayout()
 
         # Test case input
-        test_case_layout = QHBoxLayout()
-        test_case_layout.addWidget(QLabel("Test Case:"))
+        self.test_case_layout = QHBoxLayout()
+        self.test_case_layout.addWidget(QLabel("Test Case:"))
         self.test_case_input = QLineEdit()
         self.test_case_input.setPlaceholderText("e.g., Kindle_Performance_Test")
-        test_case_layout.addWidget(self.test_case_input)
-        settings_layout.addLayout(test_case_layout)
+        self.test_case_layout.addWidget(self.test_case_input)
+        settings_layout.addLayout(self.test_case_layout)
 
         # Calculation Mode selection with FIXED suspend
         calc_mode_layout = QHBoxLayout()
@@ -203,6 +204,18 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.export_zip_btn.setEnabled(False)
         self.export_zip_btn.setVisible(False)
         export_layout.addWidget(self.export_zip_btn)
+
+        # PDF export
+        self.export_pdf_btn = QPushButton("📄 Export PDF")
+        self.export_pdf_btn.clicked.connect(self.export_pdf_report)
+        self.export_pdf_btn.setEnabled(False)
+        export_layout.addWidget(self.export_pdf_btn)
+
+        # TXT export
+        self.export_txt_btn = QPushButton("📄 Export TXT")
+        self.export_txt_btn.clicked.connect(self.export_txt_report)
+        self.export_txt_btn.setEnabled(False)
+        export_layout.addWidget(self.export_txt_btn)
 
         # Excel export
         self.export_excel_btn = QPushButton("📊 Export Excel")
@@ -702,11 +715,67 @@ class FinalKindleLogAnalyzer(QMainWindow):
             self.batch_group.setVisible(False)
             self.export_zip_btn.setVisible(False)
             self.export_excel_btn.setVisible(True)
+            self.export_pdf_btn.setVisible(True)
+            self.export_txt_btn.setVisible(True)
+            self.test_case_input.parentWidget().setVisible(True)
         else:
             self.single_group.setVisible(False)
             self.batch_group.setVisible(True)
             self.export_zip_btn.setVisible(True)
             self.export_excel_btn.setVisible(False)
+            self.export_pdf_btn.setVisible(False)
+            self.export_txt_btn.setVisible(False)
+            self.test_case_input.parentWidget().setVisible(False)
+
+    def export_pdf_report(self):
+        """Export a single PDF report."""
+        if not self.results:
+            QMessageBox.warning(self, "Warning", "No results to export.")
+            return
+
+        test_case_name = self.test_case_input.text().strip()
+        if not test_case_name:
+            QMessageBox.warning(self, "Warning", "Please enter a test case name.")
+            return
+
+        default_filename = f"{test_case_name}_report.pdf"
+        pdf_path, _ = QFileDialog.getSaveFileName(self, "Save PDF Report", default_filename, "PDF Files (*.pdf)")
+
+        if not pdf_path:
+            return
+
+        try:
+            pdf_exporter = PdfExporter()
+            pdf_exporter.generate_pdf_report(self.results, pdf_path, self.current_mode)
+            QMessageBox.information(self, "Success", f"Report successfully exported to {pdf_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to create PDF file: {e}")
+            logging.error(f"Failed to create PDF file: {e}")
+
+    def export_txt_report(self):
+        """Export a single TXT report."""
+        if not self.results:
+            QMessageBox.warning(self, "Warning", "No results to export.")
+            return
+
+        test_case_name = self.test_case_input.text().strip()
+        if not test_case_name:
+            QMessageBox.warning(self, "Warning", "Please enter a test case name.")
+            return
+
+        default_filename = f"{test_case_name}_report.txt"
+        txt_path, _ = QFileDialog.getSaveFileName(self, "Save TXT Report", default_filename, "TXT Files (*.txt)")
+
+        if not txt_path:
+            return
+
+        try:
+            txt_exporter = TxtExporter()
+            txt_exporter.export_txt_file(self.results, txt_path)
+            QMessageBox.information(self, "Success", f"Report successfully exported to {txt_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to create TXT file: {e}")
+            logging.error(f"Failed to create TXT file: {e}")
 
     def add_iteration(self):
         """Add iteration data"""
@@ -730,37 +799,34 @@ class FinalKindleLogAnalyzer(QMainWindow):
             QMessageBox.warning(self, "Warning", "No iterations to process")
             return
 
-        test_case = self.test_case_input.text().strip()
-        if not test_case:
-            QMessageBox.warning(self, "Warning", "Please enter a test case name.")
-            return
-
-        if test_case in self.processed_test_cases:
-            QMessageBox.warning(self, "Warning", f"Test case '{test_case}' has already been processed.")
-            return
-
         self.progress_bar.setVisible(True)
         self.status_label.setText("Processing iterations...")
 
         # Create and start log processor thread
         self.log_processor = LogProcessor(self.all_iterations_data, self.current_mode)
         self.log_processor.progress_updated.connect(self.progress_bar.setValue)
-        self.log_processor.result_ready.connect(self.on_processing_complete)
+        self.log_processor.result_ready.connect(self.on_single_processing_complete)
         self.log_processor.error_occurred.connect(self.on_processing_error)
         self.log_processor.start()
 
-    def on_processing_complete(self, data):
-        """Handle processing completion"""
-        if self.processing_mode.currentText() == "Single Entry":
-            self.results = data['results']
-            self.processed_test_cases.add(self.test_case_input.text().strip())
-        else:
-            self.batch_results[self.current_processing_file] = data['results']
-
+    def on_single_processing_complete(self, data):
+        """Handle single processing completion"""
+        self.results = data['results']
+        self.processed_test_cases.add(self.test_case_input.text().strip())
         self.progress_bar.setVisible(False)
         self.update_all_displays()
         self.enable_export_buttons()
         self.status_label.setText(f"Processed successfully")
+
+    def on_batch_processing_complete(self, data, filename):
+        """Handle batch processing completion for a single file."""
+        self.batch_results[filename] = data['results']
+        # Check if all files have been processed
+        if len(self.batch_results) == len(self.loaded_files):
+            self.progress_bar.setVisible(False)
+            self.update_all_displays()
+            self.enable_export_buttons()
+            self.status_label.setText(f"Processed {len(self.loaded_files)} files")
 
     def on_processing_error(self, error):
         """Handle processing error"""
@@ -770,78 +836,55 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
     def update_all_displays(self):
         """Update all result displays"""
-        # Clear existing tabs beyond the default ones
-        while self.tab_widget.count() > 5:
-            self.tab_widget.removeTab(5)
-
-        if self.processing_mode.currentText() == "Batch Files":
-            if not self.batch_results:
-                return
-
-            for filename, results in self.batch_results.items():
-                self.create_and_populate_batch_tab(filename, results)
-        else:
-            if not self.results:
-                return
-            # Update summary
-            self.update_summary_display(self.results)
-
-            # Update main results table
-            self.update_results_table(self.results)
-
-            # Update waveform boxes - NEW
-            self.update_waveform_boxes(self.results)
-
-            # Update heights and waveforms table
-            self.update_heights_table(self.results)
-
-    def create_and_populate_batch_tab(self, filename, results):
-        """Creates a new tab for a batch result and populates it."""
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-
-        # Create widgets for the tab
-        summary_text = QTextEdit()
-        summary_text.setReadOnly(True)
-
-        results_table = QTableWidget()
-        results_table.setAlternatingRowColors(True)
-        results_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        results_table.horizontalHeader().setStretchLastSection(True)
-
-        # Add widgets to layout
-        layout.addWidget(QLabel(f"Summary for {filename}"))
-        layout.addWidget(summary_text)
-        layout.addWidget(QLabel("Detailed Results"))
-        layout.addWidget(results_table)
-
-        self.tab_widget.addTab(tab, f"📄 {filename}")
-
-        # Populate the widgets
-        self.update_summary_display(results, summary_text)
-        self.update_results_table(results, results_table)
-
-
-    def update_summary_display(self, results_to_display, summary_widget=None):
-        """Update summary display"""
-        if not summary_widget:
-            summary_widget = self.summary_text
-
-        if not results_to_display:
-            summary_widget.clear()
+        if not self.results and not self.batch_results:
             return
 
-        total_iterations = len(results_to_display)
-        durations = [r['duration'] for r in results_to_display]
+        if self.processing_mode.currentText() == "Batch Files":
+            self.update_summary_display()
+            self.update_batch_display()
+            results_to_display = [item for sublist in self.batch_results.values() for item in sublist]
+            self.update_results_table(results_to_display)
+            self.update_heights_table(results_to_display)
+            self.update_waveform_boxes(results_to_display)
+        else:
+            self.update_summary_display(self.results)
+            self.update_results_table(self.results)
+            self.update_waveform_boxes(self.results)
+            self.update_heights_table(self.results)
+            self.batch_results_text.clear()
+
+
+    def update_summary_display(self, results_to_display=None):
+        """Update summary display"""
+        if self.processing_mode.currentText() == "Batch Files":
+            self.summary_text.clear()
+            for filename, results in self.batch_results.items():
+                self.generate_summary_for_file(filename, results)
+            return
+
+        if results_to_display is None:
+            results_to_display = self.results
+
+        if not results_to_display:
+            self.summary_text.clear()
+            return
+
+        self.generate_summary_for_file(self.test_case_input.text() or "Single Entry", results_to_display)
+
+    def generate_summary_for_file(self, filename, results):
+        if not results:
+            return
+
+        total_iterations = len(results)
+        durations = [r['duration'] for r in results]
         avg_duration = sum(durations) / total_iterations
         min_duration = min(durations)
         max_duration = max(durations)
 
-        # Create the new format for Quick Copy Summary for Excel
         summary_html = f"""
-        <h2>📊 Processing Summary</h2>
+        <h2>📊 Processing Summary for {filename}</h2>
         <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse;">
-        <tr><td><b>Test Case:</b></td><td>{self.test_case_input.text() or 'Not specified'}</td></tr>
+        <tr><td><b>Test Case:</b></td><td>{filename}</td></tr>
         <tr><td><b>Processing Mode:</b></td><td>{self.calc_mode_combo.currentText()}</td></tr>
         <tr><td><b>Total Iterations:</b></td><td>{total_iterations}</td></tr>
         <tr><td><b>Average Duration:</b></td><td style="background-color: yellow;">{avg_duration:.3f} seconds</td></tr>
@@ -850,127 +893,140 @@ class FinalKindleLogAnalyzer(QMainWindow):
         <tr><td><b>Processing Time:</b></td><td>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</td></tr>
         </table>
 
-        <h3>📋 Iteration with Average:</h3>
+        <h3>📋 Iteration with Average for {filename}:</h3>
         <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; margin-top: 10px;">
         <tr style="background-color: #f0f0f0;">
         <td><b>Test case name</b></td>
 """
-
-        # Add iteration columns
         for i in range(1, total_iterations + 1):
             summary_html += f"<td><b>IT_{i:02d}</b></td>"
-
-        # Add AVG column
         summary_html += "<td><b>AVG</b></td></tr>"
-
-        # Add duration values
-        test_case_name = self.test_case_input.text() or 'Not specified'
-        summary_html += f"<tr><td><b>{test_case_name}</b></td>"
-
-        # Add duration for each iteration
-        for result in results_to_display:
+        summary_html += f"<tr><td><b>{filename}</b></td>"
+        for result in results:
             summary_html += f"<td>{result['duration']:.3f}</td>"
-
-        # Add average duration
         summary_html += f"<td>{avg_duration:.3f}</td></tr>"
+        summary_html += "</table><br><hr><br>"
 
-        summary_html += "</table>"
+        self.summary_text.append(summary_html)
 
-        summary_widget.setHtml(summary_html)
-
-    def update_results_table(self, results_to_display, table_widget=None):
+    def update_results_table(self, results_to_display=None):
         """Update main results table - optimized for copying"""
-        if not table_widget:
-            table_widget = self.results_table
+        if results_to_display is None:
+            results_to_display = self.results
 
         if not results_to_display:
-            table_widget.setRowCount(0)
+            self.results_table.setRowCount(0)
             return
 
-        table_widget.setRowCount(len(results_to_display))
-        table_widget.setColumnCount(8)
+        self.results_table.setRowCount(len(results_to_display))
+        self.results_table.setColumnCount(8)
 
         headers = ['Iteration', 'Duration (seconds)', 'Start Time', 'Stop Time',
                    'Marker', 'Height', 'Selected Waveform', 'Mode']
-        table_widget.setHorizontalHeaderLabels(headers)
+        self.results_table.setHorizontalHeaderLabels(headers)
 
         for i, result in enumerate(results_to_display):
-            table_widget.setItem(i, 0, QTableWidgetItem(str(result['iteration'])))
+            self.results_table.setItem(i, 0, QTableWidgetItem(str(result['iteration'])))
 
             # Duration is already in seconds
             duration_item = QTableWidgetItem(f"{result['duration']:.3f}")
             duration_item.setBackground(QBrush(QColor(255, 255, 0, 100)))  # Yellow highlighting
-            table_widget.setItem(i, 1, duration_item)
+            self.results_table.setItem(i, 1, duration_item)
 
-            table_widget.setItem(i, 2, QTableWidgetItem(str(result['start'])))
-            table_widget.setItem(i, 3, QTableWidgetItem(str(result['stop'])))
-            table_widget.setItem(i, 4, QTableWidgetItem(str(result['marker'])))
-            table_widget.setItem(i, 5, QTableWidgetItem(str(result['max_height'])))
+            self.results_table.setItem(i, 2, QTableWidgetItem(str(result['start'])))
+            self.results_table.setItem(i, 3, QTableWidgetItem(str(result['stop'])))
+            self.results_table.setItem(i, 4, QTableWidgetItem(str(result['marker'])))
+            self.results_table.setItem(i, 5, QTableWidgetItem(str(result['max_height'])))
 
             # Highlight selected waveform
             waveform_item = QTableWidgetItem(result['max_height_waveform'])
             waveform_item.setBackground(QBrush(QColor(255, 255, 0, 100)))  # Yellow highlighting
-            table_widget.setItem(i, 6, waveform_item)
+            self.results_table.setItem(i, 6, waveform_item)
 
-            table_widget.setItem(i, 7, QTableWidgetItem(result['mode']))
+            self.results_table.setItem(i, 7, QTableWidgetItem(result['mode']))
 
-        table_widget.resizeColumnsToContents()
+        self.results_table.resizeColumnsToContents()
 
-    def update_heights_table(self, results_to_display, table_widget=None):
+    def update_heights_table(self, results_to_display=None):
         """Update detailed heights and waveforms table"""
-        if not table_widget:
-            table_widget = self.heights_table
+        if results_to_display is None:
+            results_to_display = self.results
 
         if not results_to_display:
-            table_widget.setRowCount(0)
+            self.heights_table.setRowCount(0)
             return
 
         # Count total rows needed
         total_rows = sum(len(result['all_heights']) for result in results_to_display)
 
-        table_widget.setRowCount(total_rows)
-        table_widget.setColumnCount(6)
+        self.heights_table.setRowCount(total_rows)
+        self.heights_table.setColumnCount(6)
 
         headers = ['Iteration', 'Marker', 'Height', 'Waveform', 'Selected', 'End Time']
-        table_widget.setHorizontalHeaderLabels(headers)
+        self.heights_table.setHorizontalHeaderLabels(headers)
 
         row = 0
         for result in results_to_display:
             for height_info in result['all_heights']:
-                table_widget.setItem(row, 0, QTableWidgetItem(str(result['iteration'])))
-                table_widget.setItem(row, 1, QTableWidgetItem(str(height_info['marker'])))
-                table_widget.setItem(row, 2, QTableWidgetItem(str(height_info['height'])))
-                table_widget.setItem(row, 3, QTableWidgetItem(height_info['waveform']))
+                self.heights_table.setItem(row, 0, QTableWidgetItem(str(result['iteration'])))
+                self.heights_table.setItem(row, 1, QTableWidgetItem(str(height_info['marker'])))
+                self.heights_table.setItem(row, 2, QTableWidgetItem(str(height_info['height'])))
+                self.heights_table.setItem(row, 3, QTableWidgetItem(height_info['waveform']))
 
                 # Mark if this is the selected marker for final calculation
                 is_selected = str(height_info['marker']) == str(result['marker'])
                 selected_item = QTableWidgetItem("✓" if is_selected else "")
                 if is_selected:
                     selected_item.setBackground(QBrush(QColor(255, 255, 0, 150)))  # Yellow highlighting
-                table_widget.setItem(row, 4, selected_item)
+                self.heights_table.setItem(row, 4, selected_item)
 
                 # Show end time if available
                 end_time = ""
                 if 'all_end_times' in result and str(height_info['marker']) in result['all_end_times']:
                     end_time = str(result['all_end_times'][str(height_info['marker'])]['time'])
-                table_widget.setItem(row, 5, QTableWidgetItem(end_time))
+                self.heights_table.setItem(row, 5, QTableWidgetItem(end_time))
 
                 row += 1
 
-        table_widget.resizeColumnsToContents()
+        self.heights_table.resizeColumnsToContents()
+
+    def update_batch_display(self):
+        """Update batch results display"""
+        if not self.batch_results:
+            return
+
+        batch_html = "<h2>📁 Batch Processing Results</h2>"
+
+        for filename, results in self.batch_results.items():
+            batch_html += f"<h3>📄 {filename}</h3>"
+            if results:
+                batch_html += "<table border='1' cellpadding='5' cellspacing='0'>"
+                batch_html += "<tr><th>Iteration</th><th>Duration</th><th>Start</th><th>Stop</th><th>Height</th><th>Waveform</th></tr>"
+
+                for result in results:
+                    batch_html += f"""
+                    <tr>
+                    <td>{result['iteration']}</td>
+                    <td style='background-color: yellow;'>{result['duration']:.3f}</td>
+                    <td>{result['start']}</td>
+                    <td>{result['stop']}</td>
+                    <td>{result['max_height']}</td>
+                    <td style='background-color: yellow;'>{result['max_height_waveform']}</td>
+                    </tr>
+                    """
+                batch_html += "</table><br>"
+            else:
+                batch_html += "<p>No valid results found.</p>"
+
+        self.batch_results_text.setHtml(batch_html)
 
     def export_zip_report(self):
         """Export all reports into a single ZIP file."""
-        if not self.results and not self.batch_results:
+        if not self.batch_results:
             QMessageBox.warning(self, "Warning", "No results to export.")
             return
 
-        test_case_name = self.test_case_input.text().strip()
-        if not test_case_name:
-            QMessageBox.warning(self, "Warning", "Please enter a test case name.")
-            return
-
-        default_filename = f"{test_case_name}_reports.zip"
+        default_filename = "kindle_batch_reports.zip"
         zip_path, _ = QFileDialog.getSaveFileName(self, "Save ZIP Report", default_filename, "ZIP Files (*.zip)")
 
         if not zip_path:
@@ -1003,14 +1059,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         """Export to Excel with yellow highlighting"""
         results_to_export = self.results
         if self.processing_mode.currentText() == "Batch Files":
-            # In batch mode, we'll export the currently selected tab
-            current_tab_index = self.tab_widget.currentIndex()
-            if current_tab_index < 5: # Not a batch tab
-                QMessageBox.warning(self, "Warning", "Please select a batch result tab to export.")
-                return
-
-            filename = self.tab_widget.tabText(current_tab_index).replace("📄 ", "")
-            results_to_export = self.batch_results.get(filename)
+            results_to_export = [item for sublist in self.batch_results.values() for item in sublist]
 
         if not results_to_export:
             QMessageBox.warning(self, "Warning", "No results to export")
@@ -1157,48 +1206,39 @@ class FinalKindleLogAnalyzer(QMainWindow):
         if not self.loaded_files:
             return
 
-        test_case = self.test_case_input.text().strip()
-        if not test_case:
-            QMessageBox.warning(self, "Warning", "Please enter a test case name.")
-            return
-
-        if test_case in self.processed_test_cases:
-            QMessageBox.warning(self, "Warning", f"Test case '{test_case}' has already been processed.")
-            return
-
         self.status_label.setText("Processing batch files...")
         self.batch_results.clear()
+        self.threads = []
 
         for file_path in self.loaded_files:
             try:
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     content = f.read()
 
-                self.current_processing_file = os.path.basename(file_path)
+                filename = os.path.basename(file_path)
+                self.current_processing_file = filename
                 # Process content using log processor
-                self.log_processor = LogProcessor(content, self.current_mode)
-                self.log_processor.result_ready.connect(self.on_processing_complete)
-                self.log_processor.start()
-                self.log_processor.wait()
-
+                log_processor = LogProcessor(content, self.current_mode)
+                log_processor.result_ready.connect(lambda data, fn=filename: self.on_batch_processing_complete(data, fn))
+                self.threads.append(log_processor)
+                log_processor.start()
 
             except Exception as e:
                 logging.error(f"Error processing {file_path}: {str(e)}")
                 QMessageBox.warning(self, "Warning", f"Error processing {file_path}: {str(e)}")
 
-        self.processed_test_cases.add(test_case)
-        self.status_label.setText(f"Processed {len(self.loaded_files)} files")
-
     def enable_export_buttons(self):
         """Enable export buttons"""
         self.export_zip_btn.setEnabled(True)
         self.export_excel_btn.setEnabled(True)
+        self.export_pdf_btn.setEnabled(True)
+        self.export_txt_btn.setEnabled(True)
         self.generate_plot_btn.setEnabled(True)
 
     def clear_all(self):
         """Clear all data"""
         self.results = []
-        self.batch_results = []
+        self.batch_results = {}
         self.loaded_files = []
         self.all_iterations_data = ""
         self.current_iteration = 1
@@ -1217,6 +1257,8 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
         self.export_zip_btn.setEnabled(False)
         self.export_excel_btn.setEnabled(False)
+        self.export_pdf_btn.setEnabled(False)
+        self.export_txt_btn.setEnabled(False)
         self.generate_plot_btn.setEnabled(False)
         self.process_all_btn.setEnabled(False)
         self.process_batch_btn.setEnabled(False)
@@ -1227,14 +1269,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         """Generate and save the waveform plot"""
         results_to_plot = self.results
         if self.processing_mode.currentText() == "Batch Files":
-            # In batch mode, we'll plot the currently selected tab
-            current_tab_index = self.tab_widget.currentIndex()
-            if current_tab_index < 5: # Not a batch tab
-                QMessageBox.warning(self, "Warning", "Please select a batch result tab to plot.")
-                return
-
-            filename = self.tab_widget.tabText(current_tab_index).replace("📄 ", "")
-            results_to_plot = self.batch_results.get(filename)
+            results_to_plot = [item for sublist in self.batch_results.values() for item in sublist]
 
         if not results_to_plot:
             QMessageBox.warning(self, "Warning", "No results to generate a plot.")
