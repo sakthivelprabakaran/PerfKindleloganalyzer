@@ -19,7 +19,6 @@ from PyQt5.QtGui import QFont, QColor, QBrush
 from logic.log_processor import LogProcessor
 from utils.pdf_export import PdfExporter
 from utils.txt_export import TxtExporter
-from utils.waveform_plot import WaveformVisualizer
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 
@@ -223,12 +222,6 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.export_excel_btn.setEnabled(False)
         export_layout.addWidget(self.export_excel_btn)
 
-        # Generate Plot button
-        self.generate_plot_btn = QPushButton("📈 Generate Waveform Plot")
-        self.generate_plot_btn.clicked.connect(self.generate_waveform_plot)
-        self.generate_plot_btn.setEnabled(False)
-        export_layout.addWidget(self.generate_plot_btn)
-
         # Clear button
         self.clear_all_btn = QPushButton("🗑️ Clear All")
         self.clear_all_btn.clicked.connect(self.clear_all)
@@ -297,24 +290,19 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.tab_widget.addTab(self.results_tab, "📋 Main Results")
 
     def create_waveform_boxes_tab(self):
-        """Create waveform boxes tab - NEW VISUAL LAYOUT"""
+        """Create waveform boxes tab - NEW TABLE LAYOUT"""
         self.waveform_boxes_tab = QWidget()
         layout = QVBoxLayout()
 
-        layout.addWidget(QLabel("📦 Waveform Boxes - Visual Grid Layout"))
+        layout.addWidget(QLabel("📦 Waveform Boxes - Table Layout"))
 
-        # Scrollable area for the boxes
-        scroll_area = QScrollArea()
-        scroll_widget = QWidget()
-
-        # Grid layout for iteration boxes
-        self.waveform_grid = QGridLayout(scroll_widget)
-        self.waveform_grid.setSpacing(10)
-
-        scroll_area.setWidget(scroll_widget)
-        scroll_area.setWidgetResizable(True)
-        layout.addWidget(scroll_area)
-
+        # Main results table - optimized for copying to Excel
+        self.waveform_table = QTableWidget()
+        self.waveform_table.setAlternatingRowColors(True)
+        self.waveform_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.waveform_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.waveform_table)
+        
         self.waveform_boxes_tab.setLayout(layout)
         self.tab_widget.addTab(self.waveform_boxes_tab, "📦 Waveform Boxes")
 
@@ -453,28 +441,37 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.status_label.setText(f"Copied Iteration {result['iteration']} waveform data to clipboard")
 
     def update_waveform_boxes(self, results_to_display=None):
-        """Update the waveform boxes grid"""
+        """Update the waveform boxes table"""
+        self.waveform_table.setRowCount(0)
+        self.waveform_table.setColumnCount(3)
+        self.waveform_table.setHorizontalHeaderLabels(["Iteration", "Waveform Data", "Copy"])
+
         if results_to_display is None:
             results_to_display = self.results
-
+        
         if not results_to_display:
             return
 
-        # Clear existing boxes
-        for i in reversed(range(self.waveform_grid.count())):
-            self.waveform_grid.itemAt(i).widget().setParent(None)
+        for result in results_to_display:
+            row_position = self.waveform_table.rowCount()
+            self.waveform_table.insertRow(row_position)
+            
+            self.waveform_table.setItem(row_position, 0, QTableWidgetItem(str(result['iteration'])))
+            
+            waveform_data = []
+            for idx, height_info in enumerate(result['all_heights'], 1):
+                height = height_info['height']
+                waveform = height_info['waveform']
+                waveform_data.append(f"{idx}. Height - {height}, Waveform - {waveform}")
+            
+            self.waveform_table.setItem(row_position, 1, QTableWidgetItem("\n".join(waveform_data)))
 
-        # Add new boxes in a 3-column grid
-        cols = 3
-        for idx, result in enumerate(results_to_display):
-            row = idx // cols
-            col = idx % cols
+            copy_btn = QPushButton("📋 Copy")
+            copy_btn.clicked.connect(lambda checked, r=result: self.copy_iteration_data(r))
+            self.waveform_table.setCellWidget(row_position, 2, copy_btn)
 
-            box = self.create_iteration_waveform_box(result)
-            self.waveform_grid.addWidget(box, row, col)
-
-        # Add stretch to fill remaining space
-        self.waveform_grid.setRowStretch(len(results_to_display) // cols + 1, 1)
+        self.waveform_table.resizeColumnsToContents()
+        self.waveform_table.resizeRowsToContents()
 
     def toggle_dark_mode(self, checked):
         """Toggle between dark and light mode"""
@@ -714,18 +711,20 @@ class FinalKindleLogAnalyzer(QMainWindow):
             self.single_group.setVisible(True)
             self.batch_group.setVisible(False)
             self.export_zip_btn.setVisible(False)
-            self.export_excel_btn.setVisible(True)
+            self.export_excel_btn.setVisible(False)
             self.export_pdf_btn.setVisible(True)
             self.export_txt_btn.setVisible(True)
-            self.test_case_input.parentWidget().setVisible(True)
+            self.test_case_input.setVisible(True)
+            self.test_case_layout.itemAt(0).widget().setVisible(True)
         else:
             self.single_group.setVisible(False)
             self.batch_group.setVisible(True)
             self.export_zip_btn.setVisible(True)
-            self.export_excel_btn.setVisible(False)
+            self.export_excel_btn.setVisible(True)
             self.export_pdf_btn.setVisible(False)
             self.export_txt_btn.setVisible(False)
-            self.test_case_input.parentWidget().setVisible(False)
+            self.test_case_input.setVisible(False)
+            self.test_case_layout.itemAt(0).widget().setVisible(False)
 
     def export_pdf_report(self):
         """Export a single PDF report."""
@@ -798,7 +797,6 @@ class FinalKindleLogAnalyzer(QMainWindow):
         if not self.all_iterations_data:
             QMessageBox.warning(self, "Warning", "No iterations to process")
             return
-
 
         self.progress_bar.setVisible(True)
         self.status_label.setText("Processing iterations...")
@@ -912,83 +910,86 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
     def update_results_table(self, results_to_display=None):
         """Update main results table - optimized for copying"""
-        if results_to_display is None:
-            results_to_display = self.results
-            
-        if not results_to_display:
-            self.results_table.setRowCount(0)
-            return
+        self.results_table.setRowCount(0)
+        if self.processing_mode.currentText() == "Batch Files":
+            self.results_table.setColumnCount(1)
+            for filename, results in self.batch_results.items():
+                row_position = self.results_table.rowCount()
+                self.results_table.insertRow(row_position)
+                header_item = QTableWidgetItem(f"📄 {filename}")
+                header_item.setBackground(QColor("#e0e0e0"))
+                header_item.setFont(QFont("Arial", 10, QFont.Bold))
+                self.results_table.setItem(row_position, 0, header_item)
+                self.results_table.setSpan(row_position, 0, 1, 8)
+                self.populate_results_table(results)
+        else:
+            if results_to_display is None:
+                results_to_display = self.results
+            self.populate_results_table(results_to_display)
 
-        self.results_table.setRowCount(len(results_to_display))
+    def populate_results_table(self, results):
         self.results_table.setColumnCount(8)
-
         headers = ['Iteration', 'Duration (seconds)', 'Start Time', 'Stop Time',
                    'Marker', 'Height', 'Selected Waveform', 'Mode']
         self.results_table.setHorizontalHeaderLabels(headers)
 
-        for i, result in enumerate(results_to_display):
-            self.results_table.setItem(i, 0, QTableWidgetItem(str(result['iteration'])))
-
-            # Duration is already in seconds
+        for result in results:
+            row_position = self.results_table.rowCount()
+            self.results_table.insertRow(row_position)
+            self.results_table.setItem(row_position, 0, QTableWidgetItem(str(result['iteration'])))
             duration_item = QTableWidgetItem(f"{result['duration']:.3f}")
-            duration_item.setBackground(QBrush(QColor(255, 255, 0, 100)))  # Yellow highlighting
-            self.results_table.setItem(i, 1, duration_item)
-
-            self.results_table.setItem(i, 2, QTableWidgetItem(str(result['start'])))
-            self.results_table.setItem(i, 3, QTableWidgetItem(str(result['stop'])))
-            self.results_table.setItem(i, 4, QTableWidgetItem(str(result['marker'])))
-            self.results_table.setItem(i, 5, QTableWidgetItem(str(result['max_height'])))
-
-            # Highlight selected waveform
+            duration_item.setBackground(QBrush(QColor(255, 255, 0, 100)))
+            self.results_table.setItem(row_position, 1, duration_item)
+            self.results_table.setItem(row_position, 2, QTableWidgetItem(str(result['start'])))
+            self.results_table.setItem(row_position, 3, QTableWidgetItem(str(result['stop'])))
+            self.results_table.setItem(row_position, 4, QTableWidgetItem(str(result['marker'])))
+            self.results_table.setItem(row_position, 5, QTableWidgetItem(str(result['max_height'])))
             waveform_item = QTableWidgetItem(result['max_height_waveform'])
-            waveform_item.setBackground(QBrush(QColor(255, 255, 0, 100)))  # Yellow highlighting
-            self.results_table.setItem(i, 6, waveform_item)
-
-            self.results_table.setItem(i, 7, QTableWidgetItem(result['mode']))
-
+            waveform_item.setBackground(QBrush(QColor(255, 255, 0, 100)))
+            self.results_table.setItem(row_position, 6, waveform_item)
+            self.results_table.setItem(row_position, 7, QTableWidgetItem(result['mode']))
         self.results_table.resizeColumnsToContents()
 
     def update_heights_table(self, results_to_display=None):
         """Update detailed heights and waveforms table"""
-        if results_to_display is None:
-            results_to_display = self.results
+        self.heights_table.setRowCount(0)
+        if self.processing_mode.currentText() == "Batch Files":
+            self.heights_table.setColumnCount(1)
+            for filename, results in self.batch_results.items():
+                row_position = self.heights_table.rowCount()
+                self.heights_table.insertRow(row_position)
+                header_item = QTableWidgetItem(f"📄 {filename}")
+                header_item.setBackground(QColor("#e0e0e0"))
+                header_item.setFont(QFont("Arial", 10, QFont.Bold))
+                self.heights_table.setItem(row_position, 0, header_item)
+                self.heights_table.setSpan(row_position, 0, 1, 6)
+                self.populate_heights_table(results)
+        else:
+            if results_to_display is None:
+                results_to_display = self.results
+            self.populate_heights_table(results_to_display)
 
-        if not results_to_display:
-            self.heights_table.setRowCount(0)
-            return
-
-        # Count total rows needed
-        total_rows = sum(len(result['all_heights']) for result in results_to_display)
-
-        self.heights_table.setRowCount(total_rows)
+    def populate_heights_table(self, results):
         self.heights_table.setColumnCount(6)
-
         headers = ['Iteration', 'Marker', 'Height', 'Waveform', 'Selected', 'End Time']
         self.heights_table.setHorizontalHeaderLabels(headers)
-
-        row = 0
-        for result in results_to_display:
+        for result in results:
             for height_info in result['all_heights']:
-                self.heights_table.setItem(row, 0, QTableWidgetItem(str(result['iteration'])))
-                self.heights_table.setItem(row, 1, QTableWidgetItem(str(height_info['marker'])))
-                self.heights_table.setItem(row, 2, QTableWidgetItem(str(height_info['height'])))
-                self.heights_table.setItem(row, 3, QTableWidgetItem(height_info['waveform']))
-
-                # Mark if this is the selected marker for final calculation
+                row_position = self.heights_table.rowCount()
+                self.heights_table.insertRow(row_position)
+                self.heights_table.setItem(row_position, 0, QTableWidgetItem(str(result['iteration'])))
+                self.heights_table.setItem(row_position, 1, QTableWidgetItem(str(height_info['marker'])))
+                self.heights_table.setItem(row_position, 2, QTableWidgetItem(str(height_info['height'])))
+                self.heights_table.setItem(row_position, 3, QTableWidgetItem(height_info['waveform']))
                 is_selected = str(height_info['marker']) == str(result['marker'])
                 selected_item = QTableWidgetItem("✓" if is_selected else "")
                 if is_selected:
-                    selected_item.setBackground(QBrush(QColor(255, 255, 0, 150)))  # Yellow highlighting
-                self.heights_table.setItem(row, 4, selected_item)
-
-                # Show end time if available
+                    selected_item.setBackground(QBrush(QColor(255, 255, 0, 150)))
+                self.heights_table.setItem(row_position, 4, selected_item)
                 end_time = ""
                 if 'all_end_times' in result and str(height_info['marker']) in result['all_end_times']:
                     end_time = str(result['all_end_times'][str(height_info['marker'])]['time'])
-                self.heights_table.setItem(row, 5, QTableWidgetItem(end_time))
-
-                row += 1
-
+                self.heights_table.setItem(row_position, 5, QTableWidgetItem(end_time))
         self.heights_table.resizeColumnsToContents()
 
     def update_batch_display(self):
@@ -1057,131 +1058,106 @@ class FinalKindleLogAnalyzer(QMainWindow):
             logging.error(f"Failed to create ZIP file: {e}")
 
     def export_excel_with_highlighting(self):
-        """Export to Excel with yellow highlighting"""
-        results_to_export = self.results
-        if self.processing_mode.currentText() == "Batch Files":
-            results_to_export = [item for sublist in self.batch_results.values() for item in sublist]
-
-        if not results_to_export:
-            QMessageBox.warning(self, "Warning", "No results to export")
+        """Export to Excel with the new format."""
+        if self.processing_mode.currentText() != "Batch Files" or not self.batch_results:
+            QMessageBox.warning(self, "Warning", "Excel export is only available for batch processing.")
             return
 
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Export Excel with Highlighting",
-            f"{self.test_case_input.text() or 'kindle_analysis'}_highlighted.xlsx",
+            self, "Export Batch Results to Excel",
+            "kindle_batch_analysis.xlsx",
             "Excel Files (*.xlsx)"
         )
 
-        if filename:
-            try:
-                workbook = openpyxl.Workbook()
+        if not filename:
+            return
 
-                # Main Results Sheet
-                sheet = workbook.active
-                sheet.title = "Main Results"
+        try:
+            workbook = openpyxl.Workbook()
+            sheet = workbook.active
+            sheet.title = "Batch Results"
 
-                # Headers
-                headers = ['Iteration', 'Duration (seconds)', 'Start Time', 'Stop Time',
-                          'Marker', 'Height', 'Selected Waveform', 'Mode']
-                for col, header in enumerate(headers, 1):
-                    cell = sheet.cell(row=1, column=col, value=header)
-                    cell.font = Font(bold=True, color="FFFFFF")
-                    cell.fill = PatternFill(start_color="4A90E2", end_color="4A90E2", fill_type="solid")
+            # Find max number of iterations for header
+            max_iterations = 0
+            for results in self.batch_results.values():
+                if len(results) > max_iterations:
+                    max_iterations = len(results)
+            
+            # Create headers
+            headers = ["Test Case Name"]
+            for i in range(1, max_iterations + 1):
+                headers.append(f"IT_{i:02d}")
+            headers.extend(["Average", "Waveform Data"])
+            sheet.append(headers)
 
-                # Data with highlighting
-                yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+            # Write data rows
+            for test_case_name, results in self.batch_results.items():
+                row_data = [test_case_name]
+                durations = [r['duration'] for r in results]
+                
+                # Add iteration durations
+                for i in range(max_iterations):
+                    if i < len(durations):
+                        row_data.append(f"{durations[i]:.3f}")
+                    else:
+                        row_data.append("")
+                
+                # Add average
+                avg_duration = sum(durations) / len(durations) if durations else 0
+                row_data.append(f"{avg_duration:.3f}")
+                
+                # Add waveform data
+                row_data.append(self.get_waveform_summary(results))
 
-                # Write data
-                row = 2
-                for result in results_to_export:
-                    sheet.cell(row=row, column=1, value=result['iteration'])
+                sheet.append(row_data)
 
-                    # Highlight duration
-                    duration_cell = sheet.cell(row=row, column=2, value=result['duration'])
-                    duration_cell.fill = yellow_fill
+            # Auto-size columns
+            for column in sheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if cell.value:
+                            length = len(str(cell.value))
+                            if length > max_length:
+                                max_length = length
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                sheet.column_dimensions[column_letter].width = adjusted_width
 
-                    sheet.cell(row=row, column=3, value=result['start'])
-                    sheet.cell(row=row, column=4, value=result['stop'])
-                    sheet.cell(row=row, column=5, value=result['marker'])
-                    sheet.cell(row=row, column=6, value=result['max_height'])
+            workbook.save(filename)
+            QMessageBox.information(self, "Success", f"Excel file saved to:\n{filename}")
 
-                    # Highlight selected waveform
-                    waveform_cell = sheet.cell(row=row, column=7, value=result['max_height_waveform'])
-                    waveform_cell.fill = yellow_fill
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save Excel file: {str(e)}")
+            
+    def get_waveform_summary(self, results):
+        """Get a summary of waveform data for a set of results."""
+        if not results:
+            return ""
 
-                    sheet.cell(row=row, column=8, value=result['mode'])
-                    row += 1
-
-                # Auto-size columns
-                for column in sheet.columns:
-                    max_length = 0
-                    column_letter = column[0].column_letter
-                    for cell in column:
-                        try:
-                            if cell.value:
-                                length = len(str(cell.value))
-                                if length > max_length:
-                                    max_length = length
-                        except:
-                            pass
-                    adjusted_width = min(max_length + 2, 50)
-                    sheet.column_dimensions[column_letter].width = adjusted_width
-
-                # Detailed Heights Sheet
-                detail_sheet = workbook.create_sheet(title="Heights & Waveforms")
-
-                detail_headers = ['Iteration', 'Marker', 'Height', 'Waveform', 'Selected', 'End Time']
-                for col, header in enumerate(detail_headers, 1):
-                    cell = detail_sheet.cell(row=1, column=col, value=header)
-                    cell.font = Font(bold=True, color="FFFFFF")
-                    cell.fill = PatternFill(start_color="4A90E2", end_color="4A90E2", fill_type="solid")
-
-                detail_row = 2
-                # Write detailed data
-                for result in results_to_export:
-                    for height_info in result['all_heights']:
-                        detail_sheet.cell(row=detail_row, column=1, value=result['iteration'])
-                        detail_sheet.cell(row=detail_row, column=2, value=height_info['marker'])
-                        detail_sheet.cell(row=detail_row, column=3, value=height_info['height'])
-                        detail_sheet.cell(row=detail_row, column=4, value=height_info['waveform'])
-
-                        # Highlight selected rows
-                        is_selected = str(height_info['marker']) == str(result['marker'])
-                        selected_cell = detail_sheet.cell(row=detail_row, column=5, value="✓" if is_selected else "")
-                        if is_selected:
-                            selected_cell.fill = yellow_fill
-                            # Highlight entire row for selected marker
-                            for col in range(1, 7):
-                                detail_sheet.cell(row=detail_row, column=col).fill = yellow_fill
-
-                        # End time
-                        end_time = ""
-                        if 'all_end_times' in result and str(height_info['marker']) in result['all_end_times']:
-                            end_time = result['all_end_times'][str(height_info['marker'])]['time']
-                        detail_sheet.cell(row=detail_row, column=6, value=end_time)
-
-                        detail_row += 1
-
-                # Auto-size columns for detail sheet
-                for column in detail_sheet.columns:
-                    max_length = 0
-                    column_letter = column[0].column_letter
-                    for cell in column:
-                        try:
-                            if cell.value:
-                                length = len(str(cell.value))
-                                if length > max_length:
-                                    max_length = length
-                        except:
-                            pass
-                    adjusted_width = min(max_length + 2, 50)
-                    sheet.column_dimensions[column_letter].width = adjusted_width
-
-                workbook.save(filename)
-                QMessageBox.information(self, "Success", f"Excel file with highlighting saved to:\n{filename}")
-
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to save Excel file: {str(e)}")
+        patterns = {}
+        for result in results:
+            waveform_data = []
+            for idx, height_info in enumerate(result['all_heights'], 1):
+                height = height_info['height']
+                waveform = height_info['waveform']
+                waveform_data.append(f"{idx}. Height - {height}, Waveform - {waveform}")
+            
+            pattern_key = "\n".join(waveform_data)
+            if pattern_key not in patterns:
+                patterns[pattern_key] = []
+            patterns[pattern_key].append(f"IT_{result['iteration']:02d}")
+        
+        summary = []
+        for pattern, iterations in patterns.items():
+            if len(iterations) == len(results):
+                summary.append("Same pattern for all iterations:\n" + pattern)
+            else:
+                summary.append(f"Pattern for {', '.join(iterations)}:\n" + pattern)
+        
+        return "\n\n".join(summary)
 
     def select_batch_files(self):
         """Select files for batch processing"""
@@ -1234,7 +1210,6 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.export_excel_btn.setEnabled(True)
         self.export_pdf_btn.setEnabled(True)
         self.export_txt_btn.setEnabled(True)
-        self.generate_plot_btn.setEnabled(True)
 
     def clear_all(self):
         """Clear all data"""
@@ -1253,41 +1228,13 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.batch_results_text.clear()
 
         # Clear waveform boxes
-        for i in reversed(range(self.waveform_grid.count())):
-            self.waveform_grid.itemAt(i).widget().setParent(None)
+        self.waveform_table.setRowCount(0)
 
         self.export_zip_btn.setEnabled(False)
         self.export_excel_btn.setEnabled(False)
         self.export_pdf_btn.setEnabled(False)
         self.export_txt_btn.setEnabled(False)
-        self.generate_plot_btn.setEnabled(False)
         self.process_all_btn.setEnabled(False)
         self.process_batch_btn.setEnabled(False)
 
         self.status_label.setText("Ready")
-
-    def generate_waveform_plot(self):
-        """Generate and save the waveform plot"""
-        results_to_plot = self.results
-        if self.processing_mode.currentText() == "Batch Files":
-            results_to_plot = [item for sublist in self.batch_results.values() for item in sublist]
-
-        if not results_to_plot:
-            QMessageBox.warning(self, "Warning", "No results to generate a plot.")
-            return
-
-        default_filename = f"{self.test_case_input.text() or 'kindle_analysis'}_waveform_grid.png"
-        filename, _ = QFileDialog.getSaveFileName(
-            self, "Save Waveform Plot", default_filename, "PNG Files (*.png)"
-        )
-
-        if filename:
-            try:
-                visualizer = WaveformVisualizer()
-                success, message = visualizer.create_waveform_grid(results_to_plot, output_path=filename)
-                if success:
-                    QMessageBox.information(self, "Success", f"Waveform plot saved to:\n{filename}")
-                else:
-                    QMessageBox.critical(self, "Error", f"Failed to generate plot: {message}")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"An error occurred while generating the plot: {str(e)}")
