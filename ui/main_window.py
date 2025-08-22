@@ -18,7 +18,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QColor, QBrush
 
-from logic.log_processor import LogProcessor
+from logic.log_processor import LogProcessor, process_log_iteration_data
 from logic.state_manager import StateManager
 from utils.pdf_export import PdfExporter
 from utils.txt_export import TxtExporter
@@ -492,20 +492,10 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
     def process_single_log_iteration(self, log_content):
         """
-        Processes a single log iteration string synchronously.
+        Processes a single log iteration string synchronously using the centralized function.
         Returns the result dictionary or None.
         """
-        # The log processor expects an iteration header, so we add a dummy one.
-        full_log_content = "ITERATION_01\n" + log_content
-        log_processor = LogProcessor(full_log_content, self.state.current_mode)
-
-        # We can't run the thread here, so we call the processing method directly.
-        # This is a bit of a hack, but it avoids rewriting the core processing logic.
-        lines = full_log_content.split('\n')
-        # The processor's main method splits by 'ITERATION_XX', so we need to pass the content directly
-        # to the iteration processing method.
-        result = log_processor.process_iteration(log_content.split('\n'), "1", self.state.current_mode)
-        return result
+        return process_log_iteration_data(log_content.split('\n'), "1", self.state.current_mode)
 
     def create_iteration_waveform_box(self, result):
         """Create a visual box for each iteration's waveform data"""
