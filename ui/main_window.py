@@ -475,29 +475,25 @@ class FinalKindleLogAnalyzer(QMainWindow):
     def update_waveform_boxes(self, results_to_display=None):
         """Update the waveform boxes table"""
         self.waveform_table.setRowCount(0)
+        self.waveform_table.setColumnCount(3) # Ensure 3 columns for all modes
+
         if self.processing_mode.currentText() == "Batch Files":
-            self.waveform_table.setColumnCount(1)
             for filename, results in self.state.batch_results.items():
                 row_position = self.waveform_table.rowCount()
                 self.waveform_table.insertRow(row_position)
 
-                header_widget = QWidget()
-                header_layout = QHBoxLayout(header_widget)
-                header_layout.setContentsMargins(0, 0, 0, 0)
+                # Add file header item
+                header_item = QTableWidgetItem(f"📄 {filename}")
+                header_item.setBackground(QColor("#e0e0e0"))
+                header_item.setFont(QFont("Arial", 10, QFont.Bold))
+                self.waveform_table.setItem(row_position, 0, header_item)
+                self.waveform_table.setSpan(row_position, 0, 1, 2) # Span first two columns
 
-                filename_label = QLabel(f"📄 {filename}")
-                filename_label.setFont(QFont("Arial", 10, QFont.Bold))
-
-                copy_all_btn = QPushButton("📋 Copy All")
-                copy_all_btn.setMaximumWidth(150)
+                # Add "Copy All" button for the file
+                copy_all_btn = QPushButton("📋 Copy All Iterations")
+                copy_all_btn.setMaximumWidth(180)
                 copy_all_btn.clicked.connect(lambda checked, r=results: self.copy_file_waveforms_data(r))
-
-                header_layout.addWidget(filename_label)
-                header_layout.addStretch()
-                header_layout.addWidget(copy_all_btn)
-
-                self.waveform_table.setCellWidget(row_position, 0, header_widget)
-                self.waveform_table.setSpan(row_position, 0, 1, 3)
+                self.waveform_table.setCellWidget(row_position, 2, copy_all_btn)
 
                 self.populate_waveform_boxes_table(results)
         else:
