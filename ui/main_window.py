@@ -442,14 +442,15 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.status_label.setText(f"Copied Iteration {result['iteration']} waveform data to clipboard")
 
     def copy_all_waveforms_data(self):
-        """Copy all waveform data from all iterations to the clipboard."""
-        results_to_copy = []
-        if self.processing_mode.currentText() == "Batch Files":
-            for res_list in self.state.batch_results.values():
-                results_to_copy.extend(res_list)
-        else:
-            results_to_copy = self.state.results
+        """Copy all waveform data from all iterations for single entry mode."""
+        self._copy_waveform_data_to_clipboard(self.state.results)
 
+    def copy_file_waveforms_data(self, results):
+        """Copy waveform data for all iterations of a specific file."""
+        self._copy_waveform_data_to_clipboard(results)
+
+    def _copy_waveform_data_to_clipboard(self, results_to_copy):
+        """Helper function to format and copy waveform data."""
         if not results_to_copy:
             self.status_label.setText("No waveform data to copy.")
             return
@@ -467,9 +468,9 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
             all_waveforms_text.append("\n".join(height_waveform_data))
 
-        final_text = "\n".join(all_waveforms_text)
+        final_text = "\n\n".join(all_waveforms_text)
         QApplication.clipboard().setText(final_text)
-        self.status_label.setText("Copied all waveform data to clipboard.")
+        self.status_label.setText("Copied waveform data to clipboard.")
 
     def update_waveform_boxes(self, results_to_display=None):
         """Update the waveform boxes table"""
@@ -479,11 +480,25 @@ class FinalKindleLogAnalyzer(QMainWindow):
             for filename, results in self.state.batch_results.items():
                 row_position = self.waveform_table.rowCount()
                 self.waveform_table.insertRow(row_position)
-                header_item = QTableWidgetItem(f"📄 {filename}")
-                header_item.setBackground(QColor("#e0e0e0"))
-                header_item.setFont(QFont("Arial", 10, QFont.Bold))
-                self.waveform_table.setItem(row_position, 0, header_item)
+
+                header_widget = QWidget()
+                header_layout = QHBoxLayout(header_widget)
+                header_layout.setContentsMargins(0, 0, 0, 0)
+
+                filename_label = QLabel(f"📄 {filename}")
+                filename_label.setFont(QFont("Arial", 10, QFont.Bold))
+
+                copy_all_btn = QPushButton("📋 Copy All")
+                copy_all_btn.setMaximumWidth(150)
+                copy_all_btn.clicked.connect(lambda checked, r=results: self.copy_file_waveforms_data(r))
+
+                header_layout.addWidget(filename_label)
+                header_layout.addStretch()
+                header_layout.addWidget(copy_all_btn)
+
+                self.waveform_table.setCellWidget(row_position, 0, header_widget)
                 self.waveform_table.setSpan(row_position, 0, 1, 3)
+
                 self.populate_waveform_boxes_table(results)
         else:
             if results_to_display is None:
@@ -554,6 +569,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
             self.export_txt_btn.setVisible(True)
             self.test_case_input.setVisible(True)
             self.test_case_layout.itemAt(0).widget().setVisible(True)
+            self.copy_all_waveforms_btn.setVisible(True)
         else:
             self.single_group.setVisible(False)
             self.batch_group.setVisible(True)
@@ -563,6 +579,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
             self.export_txt_btn.setVisible(False)
             self.test_case_input.setVisible(False)
             self.test_case_layout.itemAt(0).widget().setVisible(False)
+            self.copy_all_waveforms_btn.setVisible(False)
 
     def export_pdf_report(self):
         """Export a single PDF report."""
