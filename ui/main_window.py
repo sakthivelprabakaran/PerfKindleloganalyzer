@@ -1,5 +1,6 @@
 import sys
 import os
+import json
 import re
 import logging
 import difflib
@@ -38,6 +39,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
         self.setup_ui()
         self.setup_styling()
+        self.load_session()
 
     def setup_ui(self):
         self.setWindowTitle("Final Kindle Log Analyzer - PDF Export & Waveform Boxes")
@@ -840,6 +842,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.update_all_displays()
         self.enable_export_buttons()
         self.status_label.setText(f"Processed successfully")
+        self.save_session()
 
     def on_batch_processing_complete(self, data, filename):
         """Handle batch processing completion for a single file."""
@@ -850,6 +853,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
             self.update_all_displays()
             self.enable_export_buttons()
             self.status_label.setText(f"Processed {len(self.state.loaded_files)} files")
+            self.save_session()
 
     def on_processing_error(self, error):
         """Handle processing error"""
@@ -1139,6 +1143,40 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.export_zip_btn.setEnabled(True)
         self.export_excel_btn.setEnabled(True)
         self.export_report_btn.setEnabled(True)
+
+    def save_session(self):
+        """Saves the current session state to a file."""
+        try:
+            with open("autosave_session.json", "w") as f:
+                json.dump(self.state.to_dict(), f, indent=4)
+            logging.info("Session saved automatically.")
+        except Exception as e:
+            logging.error(f"Error auto-saving session: {e}")
+
+    def load_session(self):
+        """Loads a session state from a file if it exists."""
+        if os.path.exists("autosave_session.json"):
+            reply = QMessageBox.question(self, 'Restore Session',
+                                         "It looks like you have a saved session. Would you like to restore it?",
+                                         QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+
+            if reply == QMessageBox.Yes:
+                try:
+                    with open("autosave_session.json", "r") as f:
+                        data = json.load(f)
+                        self.state.from_dict(data)
+
+                    # Refresh UI based on loaded state
+                    self.update_all_displays()
+                    self.enable_export_buttons()
+                    self.status_label.setText("Previous session restored.")
+
+                    # Clean up the file so it's not loaded again
+                    os.remove("autosave_session.json")
+
+                except Exception as e:
+                    logging.error(f"Error loading session: {e}")
+                    QMessageBox.critical(self, "Error", f"Could not load the session file: {e}")
 
     def clear_all(self):
         """Clear all data"""
