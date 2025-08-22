@@ -1,0 +1,85 @@
+/* Light Mode Variables */
+:root {
+    --primary-color: #4a90e2;
+    --primary-hover-color: #357abd;
+    --primary-pressed-color: #2968a3;
+    --background-color: #f0f0f0;
+    --text-color: #333333;
+    --widget-background-color: #ffffff;
+    --border-color: #cccccc;
+    --disabled-bg-color: #cccccc;
+    --disabled-text-color: #666666;
+    --tab-bg-color: #e0e0e0;
+}
+
+/* Dark Mode Variables */
+[data-theme="dark"] {
+    --primary-color: #0d7377;
+    --primary-hover-color: #14a085;
+    --primary-pressed-color: #0a5d61;
+    --background-color: #2b2b2b;
+    --text-color: #ffffff;
+    --widget-background-color: #3c3c3c;
+    --border-color: #555555;
+    --disabled-bg-color: #555555;
+    --disabled-text-color: #888888;
+    --tab-bg-color: #505050;
+}
+
+body {
+    background-color: var(--background-color);
+    color: var(--text-color);
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background-color: var(--widget-background-color);
+    border-right: 2px solid var(--border-color);
+}
+
+/* Buttons */
+[data-testid="stButton"] button {
+    background-color: var(--primary-color);
+    color: white;
+    border-radius: 6px;
+    padding: 10px 16px;
+    font-weight: bold;
+    border: none;
+}
+
+[data-testid="stButton"] button:hover {
+    background-color: var(--primary-hover-color);
+}
+
+[data-testid="stButton"] button:active {
+    background-color: var(--primary-pressed-color);
+}
+
+[data-testid="stButton"] button:disabled {
+    background-color: var(--disabled-bg-color);
+    color: var(--disabled-text-color);
+}
+
+/* Inputs */
+[data-testid="stTextInput"] input,
+[data-testid="stTextArea"] textarea,
+[data-testid="stSelectbox"] div[data-baseweb="select"] {
+    background-color: var(--widget-background-color);
+    color: var(--text-color);
+    border: 2px solid var(--border-color);
+    border-radius: 4px;
+    padding: 8px;
+}
+
+/* Tabs */
+[data-testid="stTabs"] button[role="tab"] {
+    background-color: var(--tab-bg-color);
+    color: var(--text-color);
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+}
+
+[data-testid="stTabs"] button[aria-selected="true"] {
+    background-color: var(--primary-color);
+    color: white;
+}

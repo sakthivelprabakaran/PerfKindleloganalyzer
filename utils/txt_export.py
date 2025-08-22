@@ -155,6 +155,54 @@ class TxtExporter:
         except Exception as e:
             return False, f"Failed to create TXT file: {e}"
 
+    def generate_txt_bytes(self, results, include_summary=True):
+        """Generate TXT report and return as bytes"""
+        import io
+        buffer = io.StringIO()
+        try:
+            # Write header
+            buffer.write("KINDLE LOG ANALYZER - EXPORTED LOGS\\n")
+            buffer.write(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\\n")
+            buffer.write(self.separator + "\\n\\n")
+
+            # Write summary
+            if include_summary and results:
+                buffer.write("SUMMARY\\n")
+                buffer.write(self.iteration_separator + "\\n")
+                buffer.write(f"Total Iterations: {len(results)}\\n")
+
+                durations = [r.get('duration', 0) for r in results if r.get('duration') is not None]
+                if durations:
+                    buffer.write(f"Average Duration: {sum(durations) / len(durations):.2f}\\n")
+                    buffer.write(f"Min Duration: {min(durations)}\\n")
+                    buffer.write(f"Max Duration: {max(durations)}\\n")
+
+                buffer.write("\\nIteration Details:\\n")
+                for result in results:
+                    buffer.write(f"  ITERATION_{result.get('iteration', 'N/A')}: "
+                                f"Duration={result.get('duration', 'N/A')}\\n")
+
+                buffer.write("\\n" + self.separator + "\\n\\n")
+
+            # Write logs
+            for idx, result in enumerate(results):
+                iteration_num = result.get('iteration', f'{idx+1:02d}')
+                buffer.write(f"ITERATION_{iteration_num}\\n")
+                buffer.write(self.iteration_separator + "\\n")
+                original_log = result.get('original_log', '')
+                buffer.write(original_log)
+                if not original_log.endswith('\\n'):
+                    buffer.write('\\n')
+                if idx < len(results) - 1:
+                    buffer.write("\\n" + self.separator + "\\n\\n")
+
+            txt_bytes = buffer.getvalue().encode('utf-8')
+            buffer.close()
+            return txt_bytes
+        except Exception as e:
+            buffer.close()
+            raise e
+
 
 def test_txt_export():
     """Test function for TXT export"""

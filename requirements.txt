@@ -2,3 +2,5 @@ PyQt5
 reportlab
 openpyxl
 matplotlib
+streamlit
+pandas

@@ -133,6 +133,47 @@ class PdfExporter:
             
         except Exception as e:
             return False, f"Error generating PDF: {str(e)}"
+
+    def generate_pdf_bytes(self, results, mode="default"):
+        """Generate comprehensive PDF report and return as bytes"""
+        import io
+        buffer = io.BytesIO()
+        try:
+            doc = SimpleDocTemplate(
+                buffer,
+                pagesize=A4,
+                rightMargin=50,
+                leftMargin=50,
+                topMargin=50,
+                bottomMargin=50
+            )
+
+            story = []
+
+            title = f"Kindle Log Analysis Report - {mode.title()} Mode"
+            story.append(Paragraph(title, self.title_style))
+            story.append(Spacer(1, 20))
+
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            story.append(Paragraph(f"Generated on: {timestamp}", self.styles['Normal']))
+            story.append(Spacer(1, 20))
+
+            story.extend(self.create_table_of_contents(results))
+            story.append(PageBreak())
+
+            for idx, result in enumerate(results):
+                story.extend(self.process_iteration_for_pdf(result))
+                if idx < len(results) - 1:
+                    story.append(PageBreak())
+
+            doc.build(story)
+            pdf_bytes = buffer.getvalue()
+            buffer.close()
+            return pdf_bytes
+
+        except Exception as e:
+            buffer.close()
+            raise e
     
     def export_pdf_report(self, results, output_path, current_mode):
         """Export a single PDF report."""

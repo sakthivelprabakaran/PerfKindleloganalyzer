@@ -67,6 +67,38 @@ class ExcelExporter:
         except Exception as e:
             return False, f"Failed to save Excel file: {str(e)}"
 
+    def generate_excel_bytes(self, batch_results):
+        """Generate Excel report and return as bytes."""
+        import io
+        try:
+            workbook = openpyxl.Workbook()
+            sheet = workbook.active
+            sheet.title = "Batch Results"
+
+            # ... (logic from export_excel_with_highlighting) ...
+            max_iterations = 0
+            for results in batch_results.values():
+                if len(results) > max_iterations:
+                    max_iterations = len(results)
+            headers = ["Test Case Name"] + [f"IT_{i+1:02d}" for i in range(max_iterations)] + ["Average", "Waveform Data"]
+            sheet.append(headers)
+            for test_case_name, results in batch_results.items():
+                row_data = [test_case_name]
+                durations = [r['duration'] for r in results]
+                for i in range(max_iterations):
+                    row_data.append(f"{durations[i]:.3f}" if i < len(durations) else "")
+                avg_duration = sum(durations) / len(durations) if durations else 0
+                row_data.append(f"{avg_duration:.3f}")
+                row_data.append(self.get_waveform_summary(results))
+                sheet.append(row_data)
+
+            buffer = io.BytesIO()
+            workbook.save(buffer)
+            buffer.seek(0)
+            return buffer.getvalue()
+        except Exception as e:
+            raise e
+
     def get_waveform_summary(self, results):
         """Get a summary of waveform data for a set of results."""
         if not results:
