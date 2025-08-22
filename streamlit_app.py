@@ -14,6 +14,17 @@ def load_css(file_name):
     with open(file_name) as f:
         st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
+def add_iteration_callback():
+    log_content = st.session_state.log_input_widget
+    if log_content and log_content.strip():
+        iteration_header = f"\nITERATION_{st.session_state.current_iteration:02d}\n"
+        st.session_state.all_iterations_data += iteration_header + log_content + "\n"
+        st.session_state.current_iteration += 1
+        st.session_state.status = f"Added iteration {st.session_state.current_iteration - 1}. Ready for next."
+        st.session_state.log_input_widget = ""
+    else:
+        st.session_state.status = "Cannot add empty log. Please enter log data."
+
 # --- State Management ---
 if 'initialized' not in st.session_state:
     st.session_state.initialized = True
@@ -83,17 +94,7 @@ if processing_mode == "Single Entry":
     )
     col1, col2 = st.sidebar.columns(2)
     with col1:
-        if st.button("➕ Add Iteration", use_container_width=True):
-            log_content = st.session_state.log_input_widget
-            if log_content and log_content.strip():
-                iteration_header = f"\nITERATION_{st.session_state.current_iteration:02d}\n"
-                st.session_state.all_iterations_data += iteration_header + log_content + "\n"
-                st.session_state.current_iteration += 1
-                st.session_state.status = f"Added iteration {st.session_state.current_iteration - 1}. Ready for next."
-                st.session_state.log_input_widget = "" # Clear the text area
-                st.experimental_rerun()
-            else:
-                st.sidebar.warning("Please enter log data.")
+        st.button("➕ Add Iteration", use_container_width=True, on_click=add_iteration_callback)
 
     with col2:
         if st.button("🔄 Process All", use_container_width=True, disabled=not st.session_state.all_iterations_data):
