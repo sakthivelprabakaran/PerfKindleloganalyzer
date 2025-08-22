@@ -25,6 +25,25 @@ def add_iteration_callback():
     else:
         st.session_state.status = "Cannot add empty log. Please enter log data."
 
+def reset_app_state():
+    """Resets the data/results part of the session state, preserving UI controls."""
+    st.session_state.test_case_name = ""
+    st.session_state.log_input_widget = ""
+    st.session_state.all_iterations_data = ""
+    st.session_state.current_iteration = 1
+    st.session_state.results = []
+    st.session_state.batch_results = {}
+    st.session_state.status = "Ready"
+    st.session_state.uploaded_files = []
+    # Clear any generated export data
+    if 'pdf_export_bytes' in st.session_state:
+        del st.session_state.pdf_export_bytes
+    if 'txt_export_bytes' in st.session_state:
+        del st.session_state.txt_export_bytes
+    if 'comparison_html' in st.session_state:
+        st.session_state.comparison_html = ""
+
+
 # --- State Management ---
 if 'initialized' not in st.session_state:
     st.session_state.initialized = True
@@ -206,11 +225,7 @@ with col1:
         else:
             st.button("Export Excel Report", disabled=True)
 
-    if st.button("🗑️ Clear All"):
-        for key in st.session_state.keys():
-            if key != 'initialized':
-                del st.session_state[key]
-        st.rerun()
+    st.button("🗑️ Clear All", on_click=reset_app_state)
 
 # --- RIGHT PANEL (COLUMN 2) ---
 with col2:
@@ -270,7 +285,7 @@ with col2:
 
         with tab3:
             st.header("Waveform Boxes")
-            def display_waveform_boxes(results):
+            def display_waveform_boxes(results, filename_prefix=""):
                 if not results: st.info("No data to display."); return
                 num_cols = min(len(results), 3)
                 if num_cols == 0: return
@@ -289,7 +304,8 @@ with col2:
                                     if is_selected: st.markdown(f"**{height_text}**")
                                     else: st.write(height_text)
                             height_waveform_data = [f"{idx}. Height - {h['height']}, Waveform - {h['waveform']}" for idx, h in enumerate(result['all_heights'], 1)]
-                            st.download_button(label="📋 Copy Data", data="\\n".join(height_waveform_data), file_name=f"iteration_{result['iteration']}_waveforms.txt", mime="text/plain", key=f"copy_btn_{result['iteration']}")
+                            unique_key = f"copy_btn_{filename_prefix}_{result['iteration']}"
+                            st.download_button(label="📋 Copy Data", data="\\n".join(height_waveform_data), file_name=f"iteration_{result['iteration']}_waveforms.txt", mime="text/plain", key=unique_key)
                             st.markdown("---")
             if st.session_state.processing_mode == "Single Entry":
                 display_waveform_boxes(st.session_state.results)
@@ -297,7 +313,7 @@ with col2:
                 if st.session_state.batch_results:
                     for filename, results in st.session_state.batch_results.items():
                         st.subheader(f"Waveforms for: {filename}")
-                        display_waveform_boxes(results)
+                        display_waveform_boxes(results, filename_prefix=filename)
                 else: st.info("No data to display.")
 
         with tab4:
@@ -340,6 +356,9 @@ with col2:
             st.header("Batch Processing Results")
             if st.session_state.processing_mode == "Batch Files" and st.session_state.batch_results:
                 st.write("This tab shows the raw results data for the processed batch.")
+                # Debugging statement:
+                st.write("DEBUG: Raw batch_results content:")
+                st.write(st.session_state.batch_results)
                 st.json(st.session_state.batch_results)
             else:
                 st.info("No batch results to display. Process files in batch mode to see results here.")
