@@ -2,6 +2,7 @@ import sys
 import os
 import re
 import logging
+import difflib
 from datetime import datetime
 from pathlib import Path
 import zipfile
@@ -376,9 +377,14 @@ class FinalKindleLogAnalyzer(QMainWindow):
         results_group = QGroupBox("Comparison")
         results_layout = QVBoxLayout()
 
+        controls_layout = QHBoxLayout()
         self.compare_btn = QPushButton("⚖️ Compare Logs")
         self.compare_btn.clicked.connect(self.compare_logs)
-        results_layout.addWidget(self.compare_btn)
+        self.clear_comparison_btn = QPushButton("🗑️ Clear")
+        self.clear_comparison_btn.clicked.connect(self.clear_comparison_fields)
+        controls_layout.addWidget(self.compare_btn)
+        controls_layout.addWidget(self.clear_comparison_btn)
+        results_layout.addLayout(controls_layout)
 
         self.comparison_results_text = QTextEdit()
         self.comparison_results_text.setReadOnly(True)
@@ -411,101 +417,76 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.comparison_results_text.setHtml(comparison_html)
 
     def generate_comparison_html(self, result_a, result_b):
-        """Generates an HTML report comparing two processed log results."""
+        """Generates an HTML report comparing two processed log results using sequence matching."""
 
-        # Duration comparison
+        # Duration comparison (same as before)
         duration_a = result_a['duration']
         duration_b = result_b['duration']
         duration_diff = duration_b - duration_a
 
         if duration_a > 0:
             deviation = (duration_diff / duration_a) * 100
-            if duration_diff > 0:
-                color = "red" # Slower
-                sign = "+"
-                verdict = f"Slower ({sign}{deviation:.2f}%)"
-            else:
-                color = "green" # Faster
-                sign = ""
-                verdict = f"Faster ({sign}{deviation:.2f}%)"
+            verdict, color = ("Slower", "red") if duration_diff > 0 else ("Faster", "green")
+            verdict_text = f"{verdict} ({deviation:+.2f}%)"
         else:
-            deviation = 0
-            verdict = "N/A"
-            color = "black"
+            verdict_text, color = "N/A", "black"
 
         html = f"""
         <h2>Comparison Summary</h2>
-        <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse;">
+        <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width:100%;">
             <tr style="background-color: #f0f0f0;">
-                <th>Metric</th>
-                <th>Log A (Previous)</th>
-                <th>Log B (Current)</th>
-                <th>Difference</th>
-                <th style="color: {color};">Deviation</th>
+                <th>Metric</th><th>Log A (Previous)</th><th>Log B (Current)</th><th>Difference</th><th style="color: {color};">Deviation</th>
             </tr>
             <tr>
-                <td><b>Duration (s)</b></td>
-                <td>{duration_a:.3f}</td>
-                <td>{duration_b:.3f}</td>
-                <td>{duration_diff:+.3f}</td>
-                <td style="color: {color};"><b>{verdict}</b></td>
+                <td><b>Duration (s)</b></td><td>{duration_a:.3f}</td><td>{duration_b:.3f}</td><td>{duration_diff:+.3f}</td><td style="color: {color};"><b>{verdict_text}</b></td>
             </tr>
         </table>
-
-        <h2>Waveform Pattern Details</h2>
+        <h2>Waveform Pattern Comparison</h2>
         """
 
-        # Waveform and height comparison
-        waveforms_a = {str(h['marker']): h for h in result_a['all_heights']}
-        waveforms_b = {str(h['marker']): h for h in result_b['all_heights']}
-        all_markers = sorted(list(set(waveforms_a.keys()) | set(waveforms_b.keys())), key=int)
+        # Sequence comparison of (height, waveform) pairs
+        seq_a = [(h['height'], h['waveform']) for h in result_a['all_heights']]
+        seq_b = [(h['height'], h['waveform']) for h in result_b['all_heights']]
 
         table_html = """
         <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width: 100%;">
             <tr style="background-color: #f0f0f0;">
-                <th>Marker</th>
-                <th>Log A (Height, Waveform)</th>
-                <th>Log B (Height, Waveform)</th>
-                <th>Comparison</th>
+                <th>Step</th><th>Log A (Height, Waveform)</th><th>Log B (Height, Waveform)</th><th>Comparison</th>
             </tr>
         """
 
-        for marker in all_markers:
-            a = waveforms_a.get(marker)
-            b = waveforms_b.get(marker)
-
-            row_html = "<tr>"
-            row_html += f"<td>{marker}</td>"
-
-            if a and b: # Marker in both
-                a_text = f"{a['height']}px, {a['waveform']}"
-                b_text = f"{b['height']}px, {b['waveform']}"
-                if a == b:
-                    row_html += f"<td>{a_text}</td>"
-                    row_html += f"<td>{b_text}</td>"
-                    row_html += '<td style="color: green;">Identical</td>'
-                else: # Different values
-                    row_html += f'<td style="background-color: #ffcccb;">{a_text}</td>'
-                    row_html += f'<td style="background-color: #ffcccb;">{b_text}</td>'
-                    row_html += '<td style="color: red;"><b>Deviation</b></td>'
-            elif a and not b: # Only in A
-                a_text = f"{a['height']}px, {a['waveform']}"
-                row_html += f'<td style="background-color: #ffffcc;">{a_text}</td>'
-                row_html += '<td style="background-color: #ffffcc;">-</td>'
-                row_html += '<td style="color: orange;">Missing in Log B</td>'
-            elif not a and b: # Only in B
-                b_text = f"{b['height']}px, {b['waveform']}"
-                row_html += f'<td style="background-color: #ffffcc;">-</td>'
-                row_html += f'<td style="background-color: #ffffcc;">{b_text}</td>'
-                row_html += '<td style="color: orange;">New in Log B</td>'
-
-            row_html += "</tr>"
-            table_html += row_html
+        matcher = difflib.SequenceMatcher(None, seq_a, seq_b)
+        step = 1
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == 'equal':
+                for i in range(i1, i2):
+                    table_html += f'<tr><td>{step}</td><td>{seq_a[i][0]}px, {seq_a[i][1]}</td><td>{seq_b[j1 + (i - i1)][0]}px, {seq_b[j1 + (i - i1)][1]}</td><td style="color: green;">Identical</td></tr>'
+                    step += 1
+            if tag == 'delete':
+                for i in range(i1, i2):
+                    table_html += f'<tr style="background-color: #ffcccb;"><td>{step}</td><td>{seq_a[i][0]}px, {seq_a[i][1]}</td><td>-</td><td style="color: red;"><b>Removed from Log B</b></td></tr>'
+                    step += 1
+            if tag == 'insert':
+                for j in range(j1, j2):
+                    table_html += f'<tr style="background-color: #ccffcc;"><td>{step}</td><td>-</td><td>{seq_b[j][0]}px, {seq_b[j][1]}</td><td style="color: blue;"><b>New in Log B</b></td></tr>'
+                    step += 1
+            if tag == 'replace':
+                for i, j in zip(range(i1, i2), range(j1, j2)):
+                    table_html += f'<tr style="background-color: #ffffcc;"><td>{step}</td><td>{seq_a[i][0]}px, {seq_a[i][1]}</td><td>{seq_b[j][0]}px, {seq_b[j][1]}</td><td style="color: orange;"><b>Deviation</b></td></tr>'
+                    step += 1
 
         table_html += "</table>"
         html += table_html
 
         return html
+
+    def clear_comparison_fields(self):
+        """Clears the inputs and results in the comparison tab."""
+        self.log_a_input.clear()
+        self.log_b_input.clear()
+        self.comparison_results_text.clear()
+        self.comparison_result_a = None
+        self.comparison_result_b = None
 
     def process_single_log_iteration(self, log_content):
         """
@@ -1176,5 +1157,6 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.export_report_btn.setEnabled(False)
         self.process_all_btn.setEnabled(False)
         self.process_batch_btn.setEnabled(False)
+        self.clear_comparison_fields()
 
         self.status_label.setText("Ready")
