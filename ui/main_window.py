@@ -287,7 +287,15 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.waveform_boxes_tab = QWidget()
         layout = QVBoxLayout()
 
-        layout.addWidget(QLabel("📦 Waveform Boxes - Table Layout"))
+        top_layout = QHBoxLayout()
+        top_layout.addWidget(QLabel("📦 Waveform Boxes - Table Layout"))
+        top_layout.addStretch()
+
+        self.copy_all_waveforms_btn = QPushButton("📋 Copy All Waveforms")
+        self.copy_all_waveforms_btn.clicked.connect(self.copy_all_waveforms_data)
+        self.copy_all_waveforms_btn.setMaximumWidth(200)
+        top_layout.addWidget(self.copy_all_waveforms_btn)
+        layout.addLayout(top_layout)
 
         # Main results table - optimized for copying to Excel
         self.waveform_table = QTableWidget()
@@ -433,19 +441,64 @@ class FinalKindleLogAnalyzer(QMainWindow):
         QApplication.clipboard().setText(data)
         self.status_label.setText(f"Copied Iteration {result['iteration']} waveform data to clipboard")
 
+    def copy_all_waveforms_data(self):
+        """Copy all waveform data from all iterations to the clipboard."""
+        results_to_copy = []
+        if self.processing_mode.currentText() == "Batch Files":
+            for res_list in self.state.batch_results.values():
+                results_to_copy.extend(res_list)
+        else:
+            results_to_copy = self.state.results
+
+        if not results_to_copy:
+            self.status_label.setText("No waveform data to copy.")
+            return
+
+        all_waveforms_text = []
+        for result in sorted(results_to_copy, key=lambda x: x['iteration']):
+            iteration_header = f"ITERATION_{result['iteration']:02d}"
+            all_waveforms_text.append(iteration_header)
+
+            height_waveform_data = []
+            for idx, height_info in enumerate(result['all_heights'], 1):
+                height = height_info['height']
+                waveform = height_info['waveform']
+                height_waveform_data.append(f"{idx}. Height - {height}, Waveform - {waveform}")
+
+            all_waveforms_text.append("\n".join(height_waveform_data))
+
+        final_text = "\n".join(all_waveforms_text)
+        QApplication.clipboard().setText(final_text)
+        self.status_label.setText("Copied all waveform data to clipboard.")
+
     def update_waveform_boxes(self, results_to_display=None):
         """Update the waveform boxes table"""
         self.waveform_table.setRowCount(0)
+        if self.processing_mode.currentText() == "Batch Files":
+            self.waveform_table.setColumnCount(1)
+            for filename, results in self.state.batch_results.items():
+                row_position = self.waveform_table.rowCount()
+                self.waveform_table.insertRow(row_position)
+                header_item = QTableWidgetItem(f"📄 {filename}")
+                header_item.setBackground(QColor("#e0e0e0"))
+                header_item.setFont(QFont("Arial", 10, QFont.Bold))
+                self.waveform_table.setItem(row_position, 0, header_item)
+                self.waveform_table.setSpan(row_position, 0, 1, 3)
+                self.populate_waveform_boxes_table(results)
+        else:
+            if results_to_display is None:
+                results_to_display = self.state.results
+            self.populate_waveform_boxes_table(results_to_display)
+
+    def populate_waveform_boxes_table(self, results):
+        """Populate the waveform boxes table with results"""
         self.waveform_table.setColumnCount(3)
         self.waveform_table.setHorizontalHeaderLabels(["Iteration", "Waveform Data", "Copy"])
 
-        if results_to_display is None:
-            results_to_display = self.state.results
-
-        if not results_to_display:
+        if not results:
             return
 
-        for result in results_to_display:
+        for result in results:
             row_position = self.waveform_table.rowCount()
             self.waveform_table.insertRow(row_position)
 
@@ -460,6 +513,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
             self.waveform_table.setItem(row_position, 1, QTableWidgetItem("\n".join(waveform_data)))
 
             copy_btn = QPushButton("📋 Copy")
+            copy_btn.setMaximumWidth(100)
             copy_btn.clicked.connect(lambda checked, r=result: self.copy_iteration_data(r))
             self.waveform_table.setCellWidget(row_position, 2, copy_btn)
 
@@ -628,7 +682,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
             results_to_display = [item for sublist in self.state.batch_results.values() for item in sublist]
             self.update_results_table(results_to_display)
             self.update_heights_table(results_to_display)
-            self.update_waveform_boxes(results_to_display)
+            self.update_waveform_boxes()
         else:
             self.update_summary_display(self.state.results)
             self.update_results_table(self.state.results)
