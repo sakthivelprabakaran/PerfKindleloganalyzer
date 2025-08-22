@@ -3,6 +3,7 @@
 PDF Export Module for Kindle Log Analyzer
 Generates comprehensive PDF reports with highlighted start/stop points
 """
+import zipfile
 import re
 import os
 from datetime import datetime
