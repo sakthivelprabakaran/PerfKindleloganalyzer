@@ -2,6 +2,7 @@ import sys
 import os
 import re
 import logging
+import difflib
 from datetime import datetime
 from pathlib import Path
 import zipfile
@@ -29,6 +30,8 @@ class FinalKindleLogAnalyzer(QMainWindow):
     def __init__(self):
         super().__init__()
         self.state = StateManager()
+        self.comparison_result_a = None
+        self.comparison_result_b = None
 
         logging.basicConfig(filename='kindle_log_analyzer.log', level=logging.INFO,
                             format='%(asctime)s - %(levelname)s - %(message)s')
@@ -190,30 +193,34 @@ class FinalKindleLogAnalyzer(QMainWindow):
         export_group = QGroupBox("💾 Export Options")
         export_layout = QVBoxLayout()
 
-        # ZIP Export
+        # Batch Export
         self.export_zip_btn = QPushButton("📦 Export All Reports (ZIP)")
         self.export_zip_btn.clicked.connect(self.export_zip_report)
         self.export_zip_btn.setEnabled(False)
         self.export_zip_btn.setVisible(False)
         export_layout.addWidget(self.export_zip_btn)
 
-        # PDF export
-        self.export_pdf_btn = QPushButton("📄 Export PDF")
-        self.export_pdf_btn.clicked.connect(self.export_pdf_report)
-        self.export_pdf_btn.setEnabled(False)
-        export_layout.addWidget(self.export_pdf_btn)
-
-        # TXT export
-        self.export_txt_btn = QPushButton("📄 Export TXT")
-        self.export_txt_btn.clicked.connect(self.export_txt_report)
-        self.export_txt_btn.setEnabled(False)
-        export_layout.addWidget(self.export_txt_btn)
-
-        # Excel export
         self.export_excel_btn = QPushButton("📊 Export Excel")
         self.export_excel_btn.clicked.connect(self.export_excel_with_highlighting)
         self.export_excel_btn.setEnabled(False)
+        self.export_excel_btn.setVisible(False)
         export_layout.addWidget(self.export_excel_btn)
+
+        # Single Entry Export
+        self.single_export_widget = QWidget()
+        single_export_layout = QHBoxLayout(self.single_export_widget)
+        single_export_layout.setContentsMargins(0,0,0,0)
+        self.export_report_btn = QPushButton("Export Report")
+        self.export_report_btn.setEnabled(False)
+        self.export_report_btn.clicked.connect(self.export_single_report)
+        self.pdf_export_checkbox = QCheckBox("PDF")
+        self.pdf_export_checkbox.setChecked(True)
+        self.txt_export_checkbox = QCheckBox("TXT")
+        self.txt_export_checkbox.setChecked(True)
+        single_export_layout.addWidget(self.export_report_btn)
+        single_export_layout.addWidget(self.pdf_export_checkbox)
+        single_export_layout.addWidget(self.txt_export_checkbox)
+        export_layout.addWidget(self.single_export_widget)
 
         # Clear button
         self.clear_all_btn = QPushButton("🗑️ Clear All")
@@ -248,6 +255,9 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
         # Batch Results Tab
         self.create_batch_results_tab()
+
+        # Comparison Tab
+        self.create_comparison_tab()
 
         layout.addWidget(self.tab_widget)
         panel.setLayout(layout)
@@ -334,6 +344,166 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
         self.batch_tab.setLayout(layout)
         self.tab_widget.addTab(self.batch_tab, "📁 Batch Results")
+
+    def create_comparison_tab(self):
+        """Create the new tab for log comparison."""
+        self.comparison_tab = QWidget()
+        main_layout = QVBoxLayout(self.comparison_tab)
+
+        # Top section for inputs
+        input_splitter = QSplitter(Qt.Horizontal)
+
+        # Log A panel
+        log_a_group = QGroupBox("Log A (e.g., Previous Version)")
+        log_a_layout = QVBoxLayout()
+        self.log_a_input = QTextEdit()
+        self.log_a_input.setPlaceholderText("Paste log for iteration A here...")
+        log_a_layout.addWidget(self.log_a_input)
+        log_a_group.setLayout(log_a_layout)
+        input_splitter.addWidget(log_a_group)
+
+        # Log B panel
+        log_b_group = QGroupBox("Log B (e.g., Current Version)")
+        log_b_layout = QVBoxLayout()
+        self.log_b_input = QTextEdit()
+        self.log_b_input.setPlaceholderText("Paste log for iteration B here...")
+        log_b_layout.addWidget(self.log_b_input)
+        log_b_group.setLayout(log_b_layout)
+        input_splitter.addWidget(log_b_group)
+
+        main_layout.addWidget(input_splitter)
+
+        # Bottom section for controls and results
+        results_group = QGroupBox("Comparison")
+        results_layout = QVBoxLayout()
+
+        controls_layout = QHBoxLayout()
+        self.compare_btn = QPushButton("⚖️ Compare Logs")
+        self.compare_btn.clicked.connect(self.compare_logs)
+        self.clear_comparison_btn = QPushButton("🗑️ Clear")
+        self.clear_comparison_btn.clicked.connect(self.clear_comparison_fields)
+        controls_layout.addWidget(self.compare_btn)
+        controls_layout.addWidget(self.clear_comparison_btn)
+        results_layout.addLayout(controls_layout)
+
+        self.comparison_results_text = QTextEdit()
+        self.comparison_results_text.setReadOnly(True)
+        results_layout.addWidget(self.comparison_results_text)
+
+        results_group.setLayout(results_layout)
+        main_layout.addWidget(results_group)
+
+        self.tab_widget.addTab(self.comparison_tab, "⚖️ Comparison")
+
+    def compare_logs(self):
+        """Process and compare the two logs from the input boxes."""
+        log_a_content = self.log_a_input.toPlainText()
+        log_b_content = self.log_b_input.toPlainText()
+
+        if not log_a_content or not log_b_content:
+            QMessageBox.warning(self, "Input Error", "Please paste log content into both Log A and Log B inputs.")
+            return
+
+        # Process logs synchronously
+        result_a = self.process_single_log_iteration(log_a_content)
+        result_b = self.process_single_log_iteration(log_b_content)
+
+        if not result_a or not result_b:
+            QMessageBox.critical(self, "Processing Error", "Could not process one or both logs. Please ensure they are valid single iterations.")
+            return
+
+        # Perform the comparison and generate HTML report
+        comparison_html = self.generate_comparison_html(result_a, result_b)
+        self.comparison_results_text.setHtml(comparison_html)
+
+    def generate_comparison_html(self, result_a, result_b):
+        """Generates an HTML report comparing two processed log results using sequence matching."""
+
+        # Duration comparison (same as before)
+        duration_a = result_a['duration']
+        duration_b = result_b['duration']
+        duration_diff = duration_b - duration_a
+
+        if duration_a > 0:
+            deviation = (duration_diff / duration_a) * 100
+            verdict, color = ("Slower", "red") if duration_diff > 0 else ("Faster", "green")
+            verdict_text = f"{verdict} ({deviation:+.2f}%)"
+        else:
+            verdict_text, color = "N/A", "black"
+
+        html = f"""
+        <h2>Comparison Summary</h2>
+        <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width:100%;">
+            <tr style="background-color: #f0f0f0;">
+                <th>Metric</th><th>Log A (Previous)</th><th>Log B (Current)</th><th>Difference</th><th style="color: {color};">Deviation</th>
+            </tr>
+            <tr>
+                <td><b>Duration (s)</b></td><td>{duration_a:.3f}</td><td>{duration_b:.3f}</td><td>{duration_diff:+.3f}</td><td style="color: {color};"><b>{verdict_text}</b></td>
+            </tr>
+        </table>
+        <h2>Waveform Pattern Comparison</h2>
+        """
+
+        # Sequence comparison of (height, waveform) pairs
+        seq_a = [(h['height'], h['waveform']) for h in result_a['all_heights']]
+        seq_b = [(h['height'], h['waveform']) for h in result_b['all_heights']]
+
+        table_html = """
+        <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width: 100%;">
+            <tr style="background-color: #f0f0f0;">
+                <th>Step</th><th>Log A (Height, Waveform)</th><th>Log B (Height, Waveform)</th><th>Comparison</th>
+            </tr>
+        """
+
+        matcher = difflib.SequenceMatcher(None, seq_a, seq_b)
+        step = 1
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == 'equal':
+                for i in range(i1, i2):
+                    table_html += f'<tr><td>{step}</td><td>{seq_a[i][0]}px, {seq_a[i][1]}</td><td>{seq_b[j1 + (i - i1)][0]}px, {seq_b[j1 + (i - i1)][1]}</td><td style="color: green;">Identical</td></tr>'
+                    step += 1
+            if tag == 'delete':
+                for i in range(i1, i2):
+                    table_html += f'<tr style="background-color: #ffcccb;"><td>{step}</td><td>{seq_a[i][0]}px, {seq_a[i][1]}</td><td>-</td><td style="color: red;"><b>Removed from Log B</b></td></tr>'
+                    step += 1
+            if tag == 'insert':
+                for j in range(j1, j2):
+                    table_html += f'<tr style="background-color: #ccffcc;"><td>{step}</td><td>-</td><td>{seq_b[j][0]}px, {seq_b[j][1]}</td><td style="color: blue;"><b>New in Log B</b></td></tr>'
+                    step += 1
+            if tag == 'replace':
+                for i, j in zip(range(i1, i2), range(j1, j2)):
+                    table_html += f'<tr style="background-color: #ffffcc;"><td>{step}</td><td>{seq_a[i][0]}px, {seq_a[i][1]}</td><td>{seq_b[j][0]}px, {seq_b[j][1]}</td><td style="color: orange;"><b>Deviation</b></td></tr>'
+                    step += 1
+
+        table_html += "</table>"
+        html += table_html
+
+        return html
+
+    def clear_comparison_fields(self):
+        """Clears the inputs and results in the comparison tab."""
+        self.log_a_input.clear()
+        self.log_b_input.clear()
+        self.comparison_results_text.clear()
+        self.comparison_result_a = None
+        self.comparison_result_b = None
+
+    def process_single_log_iteration(self, log_content):
+        """
+        Processes a single log iteration string synchronously.
+        Returns the result dictionary or None.
+        """
+        # The log processor expects an iteration header, so we add a dummy one.
+        full_log_content = "ITERATION_01\n" + log_content
+        log_processor = LogProcessor(full_log_content, self.state.current_mode)
+
+        # We can't run the thread here, so we call the processing method directly.
+        # This is a bit of a hack, but it avoids rewriting the core processing logic.
+        lines = full_log_content.split('\n')
+        # The processor's main method splits by 'ITERATION_XX', so we need to pass the content directly
+        # to the iteration processing method.
+        result = log_processor.process_iteration(log_content.split('\n'), "1", self.state.current_mode)
+        return result
 
     def create_iteration_waveform_box(self, result):
         """Create a visual box for each iteration's waveform data"""
@@ -561,8 +731,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
             self.batch_group.setVisible(False)
             self.export_zip_btn.setVisible(False)
             self.export_excel_btn.setVisible(False)
-            self.export_pdf_btn.setVisible(True)
-            self.export_txt_btn.setVisible(True)
+            self.single_export_widget.setVisible(True)
             self.test_case_input.setVisible(True)
             self.test_case_layout.itemAt(0).widget().setVisible(True)
             self.copy_all_waveforms_btn.setVisible(True)
@@ -571,14 +740,13 @@ class FinalKindleLogAnalyzer(QMainWindow):
             self.batch_group.setVisible(True)
             self.export_zip_btn.setVisible(True)
             self.export_excel_btn.setVisible(True)
-            self.export_pdf_btn.setVisible(False)
-            self.export_txt_btn.setVisible(False)
+            self.single_export_widget.setVisible(False)
             self.test_case_input.setVisible(False)
             self.test_case_layout.itemAt(0).widget().setVisible(False)
             self.copy_all_waveforms_btn.setVisible(False)
 
-    def export_pdf_report(self):
-        """Export a single PDF report."""
+    def export_single_report(self):
+        """Export a single report in selected formats (PDF, TXT)."""
         if not self.state.results:
             QMessageBox.warning(self, "Warning", "No results to export.")
             return
@@ -588,44 +756,49 @@ class FinalKindleLogAnalyzer(QMainWindow):
             QMessageBox.warning(self, "Warning", "Please enter a test case name.")
             return
 
-        default_filename = f"{test_case_name}_report.pdf"
-        pdf_path, _ = QFileDialog.getSaveFileName(self, "Save PDF Report", default_filename, "PDF Files (*.pdf)")
+        pdf_checked = self.pdf_export_checkbox.isChecked()
+        txt_checked = self.txt_export_checkbox.isChecked()
 
-        if not pdf_path:
+        if not pdf_checked and not txt_checked:
+            QMessageBox.warning(self, "Warning", "Please select at least one format to export (PDF or TXT).")
             return
 
-        pdf_exporter = PdfExporter()
-        success, message = pdf_exporter.export_pdf_report(self.state.results, pdf_path, self.state.current_mode)
-        if success:
-            QMessageBox.information(self, "Success", message)
+        default_filename = f"{test_case_name}_report"
+        # Prompt user for a base file path
+        save_path, _ = QFileDialog.getSaveFileName(self, "Save Report", default_filename, "All Files (*)")
+
+        if not save_path:
+            return
+
+        base_path, _ = os.path.splitext(save_path)
+
+        success_count = 0
+        error_messages = []
+
+        if pdf_checked:
+            pdf_path = base_path + ".pdf"
+            pdf_exporter = PdfExporter()
+            success, message = pdf_exporter.export_pdf_report(self.state.results, pdf_path, self.state.current_mode)
+            if success:
+                success_count += 1
+            else:
+                error_messages.append(f"PDF Error: {message}")
+                logging.error(f"PDF Export Error: {message}")
+
+        if txt_checked:
+            txt_path = base_path + ".txt"
+            txt_exporter = TxtExporter()
+            success, message = txt_exporter.export_txt_report(self.state.results, txt_path)
+            if success:
+                success_count += 1
+            else:
+                error_messages.append(f"TXT Error: {message}")
+                logging.error(f"TXT Export Error: {message}")
+
+        if not error_messages:
+            QMessageBox.information(self, "Success", f"Successfully exported {success_count} report(s).")
         else:
-            QMessageBox.critical(self, "Error", message)
-            logging.error(message)
-
-    def export_txt_report(self):
-        """Export a single TXT report."""
-        if not self.state.results:
-            QMessageBox.warning(self, "Warning", "No results to export.")
-            return
-
-        test_case_name = self.test_case_input.text().strip()
-        if not test_case_name:
-            QMessageBox.warning(self, "Warning", "Please enter a test case name.")
-            return
-
-        default_filename = f"{test_case_name}_report.txt"
-        txt_path, _ = QFileDialog.getSaveFileName(self, "Save TXT Report", default_filename, "TXT Files (*.txt)")
-
-        if not txt_path:
-            return
-
-        txt_exporter = TxtExporter()
-        success, message = txt_exporter.export_txt_report(self.state.results, txt_path)
-        if success:
-            QMessageBox.information(self, "Success", message)
-        else:
-            QMessageBox.critical(self, "Error", message)
-            logging.error(message)
+            QMessageBox.critical(self, "Export Error", "\n".join(error_messages))
 
     def add_iteration(self):
         """Add iteration data"""
@@ -965,8 +1138,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         """Enable export buttons"""
         self.export_zip_btn.setEnabled(True)
         self.export_excel_btn.setEnabled(True)
-        self.export_pdf_btn.setEnabled(True)
-        self.export_txt_btn.setEnabled(True)
+        self.export_report_btn.setEnabled(True)
 
     def clear_all(self):
         """Clear all data"""
@@ -982,9 +1154,9 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
         self.export_zip_btn.setEnabled(False)
         self.export_excel_btn.setEnabled(False)
-        self.export_pdf_btn.setEnabled(False)
-        self.export_txt_btn.setEnabled(False)
+        self.export_report_btn.setEnabled(False)
         self.process_all_btn.setEnabled(False)
         self.process_batch_btn.setEnabled(False)
+        self.clear_comparison_fields()
 
         self.status_label.setText("Ready")
