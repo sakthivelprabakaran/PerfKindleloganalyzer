@@ -3,6 +3,7 @@
 PDF Export Module for Kindle Log Analyzer
 Generates comprehensive PDF reports with highlighted start/stop points
 """
+import zipfile
 import re
 import os
 from datetime import datetime
@@ -13,6 +14,8 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.colors import yellow, black, white, blue, red, green
 from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
+
+from utils.txt_export import TxtExporter
 
 
 class PdfExporter:
@@ -142,13 +145,22 @@ class PdfExporter:
     def export_zip_report(self, batch_results, zip_path, current_mode):
         """Export all reports into a single ZIP file."""
         try:
+            txt_exporter = TxtExporter()
             with zipfile.ZipFile(zip_path, 'w') as zipf:
                 for filename, results in batch_results.items():
-                    # Generate PDF report
-                    pdf_path = f"{Path(filename).stem}_report.pdf"
+                    base_name = Path(filename).stem
+
+                    # Generate and add PDF report
+                    pdf_path = f"{base_name}_report.pdf"
                     self.generate_pdf_report(results, pdf_path, current_mode)
                     zipf.write(pdf_path, os.path.basename(pdf_path))
                     os.remove(pdf_path)
+
+                    # Generate and add TXT report
+                    txt_path = f"{base_name}_report.txt"
+                    txt_exporter.export_txt_file(results, txt_path)
+                    zipf.write(txt_path, os.path.basename(txt_path))
+                    os.remove(txt_path)
 
             return True, f"Reports successfully exported to {zip_path}"
 

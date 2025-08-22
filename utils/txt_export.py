@@ -39,9 +39,12 @@ class TxtExporter:
                     f.write("\nIteration Details:\n")
                     for result in results:
                         f.write(f"  ITERATION_{result.get('iteration', 'N/A')}: "
-                               f"Start={result.get('start', 'N/A')}, "
-                               f"Stop={result.get('stop', 'N/A')}, "
-                               f"Duration={result.get('duration', 'N/A')}\n")
+                                f"Start={result.get('start', 'N/A')}, "
+                                f"Stop={result.get('stop', 'N/A')}, "
+                                f"Duration={result.get('duration', 'N/A')}, "
+                                f"Waveform={result.get('max_height_waveform', 'N/A')}, "
+                                f"Height={result.get('max_height', 'N/A')}, "
+                                f"Marker={result.get('marker', 'N/A')}\n")
                     
                     f.write("\n" + self.separator + "\n\n")
                 
