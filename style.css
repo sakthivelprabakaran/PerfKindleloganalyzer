@@ -1,3 +1,13 @@
+/* General Body and Font Styling */
+body {
+    font-family: Arial, sans-serif;
+    font-size: 14px; /* Smaller base font size */
+}
+
+h1 { font-size: 24px; }
+h2 { font-size: 20px; }
+h3 { font-size: 16px; font-weight: bold; } /* Matching QGroupBox title */
+
 /* Light Mode Variables */
 :root {
     --primary-color: #4a90e2;
@@ -10,6 +20,10 @@
     --disabled-bg-color: #cccccc;
     --disabled-text-color: #666666;
     --tab-bg-color: #e0e0e0;
+    --header-bg-color: #4a90e2;
+    --header-text-color: white;
+    --grid-color: #e1e8ed;
+    --alt-row-color: #f8f9fa;
 }
 
 /* Dark Mode Variables */
@@ -24,6 +38,10 @@
     --disabled-bg-color: #555555;
     --disabled-text-color: #888888;
     --tab-bg-color: #505050;
+    --header-bg-color: #0d7377;
+    --header-text-color: white;
+    --grid-color: #555555;
+    --alt-row-color: #4a4a4a;
 }
 
 body {
@@ -31,10 +49,9 @@ body {
     color: var(--text-color);
 }
 
-/* Sidebar */
-[data-testid="stSidebar"] {
-    background-color: var(--widget-background-color);
-    border-right: 2px solid var(--border-color);
+/* Main Layout Columns */
+[data-testid="stHorizontalBlock"] {
+    background-color: var(--background-color);
 }
 
 /* Buttons */
@@ -42,19 +59,14 @@ body {
     background-color: var(--primary-color);
     color: white;
     border-radius: 6px;
-    padding: 10px 16px;
+    padding: 8px 14px; /* Smaller padding */
     font-weight: bold;
     border: none;
+    font-size: 13px; /* Smaller font */
 }
-
 [data-testid="stButton"] button:hover {
     background-color: var(--primary-hover-color);
 }
-
-[data-testid="stButton"] button:active {
-    background-color: var(--primary-pressed-color);
-}
-
 [data-testid="stButton"] button:disabled {
     background-color: var(--disabled-bg-color);
     color: var(--disabled-text-color);
@@ -69,6 +81,12 @@ body {
     border: 2px solid var(--border-color);
     border-radius: 4px;
     padding: 8px;
+    font-size: 13px;
+}
+[data-testid="stTextInput"] input:focus,
+[data-testid="stTextArea"] textarea:focus,
+[data-testid="stSelectbox"] div[data-baseweb="select"]:focus-within {
+    border-color: var(--primary-color);
 }
 
 /* Tabs */
@@ -77,9 +95,56 @@ body {
     color: var(--text-color);
     border-top-left-radius: 4px;
     border-top-right-radius: 4px;
+    padding: 8px 14px;
+    font-size: 14px;
 }
-
 [data-testid="stTabs"] button[aria-selected="true"] {
     background-color: var(--primary-color);
     color: white;
+}
+[data-testid="stTabs"] [data-baseweb="tab-panel"] {
+    border: 1px solid var(--border-color);
+    background-color: var(--widget-background-color);
+    border-radius: 4px;
+    padding: 10px;
+}
+
+/* Dataframes / Tables */
+[data-testid="stDataFrame"] {
+    background-color: var(--widget-background-color);
+    color: var(--text-color);
+}
+[data-testid="stDataFrame"] .col_heading {
+    background-color: var(--header-bg-color);
+    color: var(--header-text-color);
+    font-weight: bold;
+    font-size: 14px;
+}
+[data-testid="stDataFrame"] .row-odd {
+    background-color: var(--widget-background-color);
+}
+[data-testid="stDataFrame"] .row-even {
+    background-color: var(--alt-row-color);
+}
+
+/* Custom HTML table styling */
+table.dataframe {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: var(--widget-background-color);
+    color: var(--text-color);
+    font-size: 13px;
+}
+table.dataframe th, table.dataframe td {
+    border: 1px solid var(--grid-color);
+    padding: 6px;
+    text-align: left;
+}
+table.dataframe th {
+    background-color: var(--header-bg-color);
+    color: var(--header-text-color);
+    font-weight: bold;
+}
+table.dataframe tr:nth-child(even) {
+    background-color: var(--alt-row-color);
 }
