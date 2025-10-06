@@ -14,12 +14,13 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QSplitter, QGroupBox, QFileDialog, QProgressBar,
                              QLineEdit, QComboBox, QListWidget, QMessageBox,
                              QHeaderView, QAbstractItemView, QCheckBox, QGridLayout,
-                             QFrame, QScrollArea)
-from PyQt5.QtCore import Qt
+                             QFrame, QScrollArea, QStackedWidget)
+from PyQt5.QtCore import Qt, QTimer, QTime
 from PyQt5.QtGui import QFont, QColor, QBrush
 
 from logic.log_processor import LogProcessor
 from logic.state_manager import StateManager
+from logic.data_manager import DataManager
 from utils.pdf_export import PdfExporter
 from utils.txt_export import TxtExporter
 from utils.excel_export import ExcelExporter
@@ -36,12 +37,202 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.comparison_result_a = None
         self.comparison_result_b = None
 
+        # Execution Dashboard State
+        self.data_manager = None
+        self.current_sheet = None
+        self.current_test_case_index = 0
+        self.current_iteration = 0
+        self.is_timer_running = False
+        self.timer = QTimer(self)
+        self.time_elapsed = QTime(0, 0)
+
         logging.basicConfig(filename='kindle_log_analyzer.log', level=logging.INFO,
                             format='%(asctime)s - %(levelname)s - %(message)s')
 
         self.setup_ui()
         self.setup_styling()
+        self.setup_dashboard()
         self.load_session()
+
+    def setup_dashboard(self):
+        """Initializes the Execution Dashboard components."""
+        try:
+            self.data_manager = DataManager()
+            self.connect_dashboard_signals()
+            self.load_initial_dashboard_data()
+        except (FileNotFoundError, Exception) as e:
+            error_label = QLabel(f"Failed to load dashboard:\n{e}")
+            error_label.setAlignment(Qt.AlignCenter)
+            error_label.setStyleSheet("color: red;")
+            layout = QVBoxLayout()
+            layout.addWidget(error_label)
+            self.execution_dashboard.setLayout(layout)
+
+    def connect_dashboard_signals(self):
+        """Connects signals for the dashboard controls."""
+        self.timer.timeout.connect(self.update_timer_display)
+        self.priority_combo.currentTextChanged.connect(self.load_sheet_data)
+        self.start_stop_btn.clicked.connect(self.toggle_timer)
+        self.confirm_btn.clicked.connect(self.confirm_iteration)
+        self.next_btn.clicked.connect(self.next_test_case)
+        self.prev_btn.clicked.connect(self.prev_test_case)
+        self.notes_area.textChanged.connect(self.save_note)
+
+    def load_initial_dashboard_data(self):
+        """Loads the initial data for the dashboard."""
+        if not self.data_manager:
+            return
+        sheet_names = self.data_manager.get_sheet_names()
+        if sheet_names:
+            self.priority_combo.addItems(sheet_names)
+        else:
+            self.priority_combo.addItem("No sheets found")
+            self.priority_combo.setEnabled(False)
+
+    def load_sheet_data(self, sheet_name):
+        """Loads data from the selected sheet."""
+        if not self.data_manager or "No sheets found" in sheet_name:
+            return
+        self.current_sheet = sheet_name
+        self.current_test_case_index = 0
+        self.display_test_case()
+        self.update_results_table()
+
+    def display_test_case(self):
+        """Displays the current test case details in the dashboard panel."""
+        if not self.data_manager or not self.current_sheet:
+            return
+
+        df = self.data_manager.get_sheet_data(self.current_sheet)
+        if df is None or self.current_test_case_index >= len(df):
+            return
+
+        row = df.iloc[self.current_test_case_index]
+
+        self.execution_dashboard.test_case_id_label.setText(f"ID: {row.get('Test Case ID', 'N/A')}")
+        self.execution_dashboard.test_case_name_label.setText(f"Name: {row.get('Test Case Name', 'N/A')}")
+        self.execution_dashboard.prereq_area.setText(str(row.get('Pre-requisites', '')))
+        self.execution_dashboard.test_steps_area.setText(str(row.get('Test Steps', '')))
+        self.execution_dashboard.n_points_label.setText(f"N-Points: {row.get('N-Points', 'N/A')}")
+
+        self.notes_area.setText(str(row.get('Notes', '')))
+
+        self.current_iteration = 0
+        self.update_iteration_indicators()
+
+    def toggle_timer(self):
+        """Starts or stops the dashboard timer."""
+        if self.is_timer_running:
+            self.is_timer_running = False
+            self.timer.stop()
+        else:
+            self.is_timer_running = True
+            self.time_elapsed.setHMS(0, 0, 0, 0)
+            self.timer.start(1)
+
+    def update_timer_display(self):
+        """Updates the timer display label."""
+        self.time_elapsed = self.time_elapsed.addMSecs(1)
+        self.timer_display.setText(self.time_elapsed.toString("mm:ss.zzz"))
+
+    def confirm_iteration(self):
+        """Confirms the current iteration and saves the time."""
+        if self.is_timer_running:
+            self.toggle_timer()
+
+        if self.current_iteration < 5:
+            col_name = f"Iteration{self.current_iteration + 1}"
+            time_str = self.timer_display.text()
+
+            self.data_manager.update_cell(
+                self.current_sheet, self.current_test_case_index, col_name, time_str
+            )
+            self.data_manager.save_data()
+
+            self.current_iteration += 1
+            self.update_iteration_indicators()
+            self.update_results_table()
+
+            if self.current_iteration == 5:
+                self.calculate_average()
+                self.next_test_case()
+
+    def next_test_case(self):
+        """Navigates to the next test case."""
+        df = self.data_manager.get_sheet_data(self.current_sheet)
+        if df is not None and self.current_test_case_index < len(df) - 1:
+            self.current_test_case_index += 1
+            self.display_test_case()
+
+    def prev_test_case(self):
+        """Navigates to the previous test case."""
+        if self.current_test_case_index > 0:
+            self.current_test_case_index -= 1
+            self.display_test_case()
+
+    def update_iteration_indicators(self):
+        """Updates the visual indicators for iterations."""
+        for i, indicator in enumerate(self.iteration_indicators):
+            if i < self.current_iteration:
+                indicator.setStyleSheet("background-color: #2E8B57; border-radius: 10px;")
+            else:
+                indicator.setStyleSheet("background-color: #d3d3d3; border-radius: 10px;")
+
+    def calculate_average(self):
+        """Calculates and saves the average of the iterations."""
+        df = self.data_manager.get_sheet_data(self.current_sheet)
+        row = df.iloc[self.current_test_case_index]
+
+        total_time = 0
+        iteration_count = 0
+        for i in range(1, 6):
+            time_str = row.get(f"Iteration{i}")
+            if time_str and isinstance(time_str, str):
+                try:
+                    t = QTime.fromString(time_str, "mm:ss.zzz")
+                    total_time += QTime(0, 0).msecsTo(t)
+                    iteration_count += 1
+                except Exception:
+                    pass
+
+        if iteration_count > 0:
+            avg_time_ms = total_time / iteration_count
+            avg_time = QTime(0, 0).addMSecs(avg_time_ms)
+            avg_str = avg_time.toString("mm:ss.zzz")
+
+            self.data_manager.update_cell(
+                self.current_sheet, self.current_test_case_index, "Average", avg_str
+            )
+            self.data_manager.save_data()
+            self.update_results_table()
+
+    def update_results_table(self):
+        """Updates the results table in the dashboard panel."""
+        if not self.data_manager or not self.current_sheet:
+            return
+
+        df = self.data_manager.get_sheet_data(self.current_sheet)
+        if df is None:
+            return
+
+        table = self.execution_dashboard.results_table
+        table.setRowCount(len(df))
+        for i, row in df.iterrows():
+            table.setItem(i, 0, QTableWidgetItem(str(row.get("Test Case Name", ""))))
+            for j in range(1, 6):
+                table.setItem(i, j, QTableWidgetItem(str(row.get(f"Iteration{j}", ""))))
+            table.setItem(i, 6, QTableWidgetItem(str(row.get("Average", ""))))
+
+    def save_note(self):
+        """Saves the note for the current test case."""
+        if not self.data_manager or not self.current_sheet:
+            return
+
+        note_text = self.notes_area.toPlainText()
+        self.data_manager.update_cell(
+            self.current_sheet, self.current_test_case_index, "Notes", note_text
+        )
+        self.data_manager.save_data()
 
     def setup_ui(self):
         self.setWindowTitle("Final Kindle Log Analyzer - PDF Export & Waveform Boxes")
@@ -55,20 +246,24 @@ class FinalKindleLogAnalyzer(QMainWindow):
         # Create main splitter
         main_splitter = QSplitter(Qt.Horizontal)
 
-        # Left panel - Enhanced with all features
-        left_panel = self.create_enhanced_left_panel()
+        # Create a stacked widget for the left panel
+        self.left_panel_stack = QStackedWidget()
+        log_analyzer_controls = self.create_log_analyzer_controls()
+        execution_dashboard_controls = self.create_execution_dashboard_controls()
+        self.left_panel_stack.addWidget(log_analyzer_controls)
+        self.left_panel_stack.addWidget(execution_dashboard_controls)
 
         # Right panel - Enhanced results with waveform boxes
         right_panel = self.create_enhanced_right_panel()
 
-        main_splitter.addWidget(left_panel)
+        main_splitter.addWidget(self.left_panel_stack)
         main_splitter.addWidget(right_panel)
         main_splitter.setSizes([400, 1200])
 
         main_layout.addWidget(main_splitter)
 
-    def create_enhanced_left_panel(self):
-        """Enhanced left panel with all requested features"""
+    def create_log_analyzer_controls(self):
+        """Creates the control panel for the Log Analyzer."""
         panel = QGroupBox("📁 Input & Processing")
         layout = QVBoxLayout()
 
@@ -238,12 +433,75 @@ class FinalKindleLogAnalyzer(QMainWindow):
         panel.setLayout(layout)
         return panel
 
+    def create_execution_dashboard_controls(self):
+        """Creates the control panel for the Execution Dashboard."""
+        panel = QGroupBox("🚀 Timer Control & Navigation")
+        layout = QVBoxLayout()
+
+        # Priority selection
+        layout.addWidget(QLabel("Priority:"))
+        self.priority_combo = QComboBox()
+        layout.addWidget(self.priority_combo)
+
+        # Timer display
+        self.timer_display = QLabel("00:00.000")
+        self.timer_display.setAlignment(Qt.AlignCenter)
+        self.timer_display.setFont(QFont("Courier", 48, QFont.Bold))
+        self.timer_display.setStyleSheet("color: #2E8B57;")
+        layout.addWidget(self.timer_display)
+
+        # Timer controls
+        self.start_stop_btn = QPushButton("Start/Stop")
+        self.start_stop_btn.setShortcut("Space")
+        layout.addWidget(self.start_stop_btn)
+
+        # Iteration management
+        iteration_group = QGroupBox("Iterations")
+        iteration_layout = QVBoxLayout()
+        self.iteration_indicators = []
+        indicator_layout = QHBoxLayout()
+        for _ in range(5):
+            indicator = QFrame()
+            indicator.setFrameShape(QFrame.StyledPanel)
+            indicator.setFixedSize(20, 20)
+            indicator.setStyleSheet("background-color: #d3d3d3; border-radius: 10px;")
+            self.iteration_indicators.append(indicator)
+            indicator_layout.addWidget(indicator)
+        iteration_layout.addLayout(indicator_layout)
+
+        self.confirm_btn = QPushButton("Confirm & Next Iteration")
+        self.confirm_btn.setShortcut("Return")
+        iteration_layout.addWidget(self.confirm_btn)
+        iteration_group.setLayout(iteration_layout)
+        layout.addWidget(iteration_group)
+
+        # Navigation controls
+        nav_layout = QHBoxLayout()
+        self.prev_btn = QPushButton("<< Previous")
+        self.prev_btn.setShortcut("Left")
+        self.next_btn = QPushButton("Next >>")
+        self.next_btn.setShortcut("Right")
+        nav_layout.addWidget(self.prev_btn)
+        nav_layout.addWidget(self.next_btn)
+        layout.addLayout(nav_layout)
+
+        # Notes section
+        layout.addWidget(QLabel("Notes:"))
+        self.notes_area = QTextEdit()
+        self.notes_area.setPlaceholderText("Add notes for the current test case...")
+        layout.addWidget(self.notes_area)
+
+        layout.addStretch()
+        panel.setLayout(layout)
+        return panel
+
     def create_enhanced_right_panel(self):
         """Enhanced right panel with waveform boxes and better visualization"""
         panel = QWidget()
         layout = QVBoxLayout()
 
         self.tab_widget = QTabWidget()
+        self.tab_widget.currentChanged.connect(self.on_tab_changed)
 
         # Summary Tab
         self.create_summary_tab()
@@ -270,6 +528,14 @@ class FinalKindleLogAnalyzer(QMainWindow):
         layout.addWidget(self.tab_widget)
         panel.setLayout(layout)
         return panel
+
+    def on_tab_changed(self, index):
+        """Switches the left panel controls based on the selected tab."""
+        widget = self.tab_widget.widget(index)
+        if isinstance(widget, ExecutionDashboard):
+            self.left_panel_stack.setCurrentIndex(1)
+        else:
+            self.left_panel_stack.setCurrentIndex(0)
 
     def create_summary_tab(self):
         """Create summary tab"""
