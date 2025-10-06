@@ -26,6 +26,8 @@ from utils.excel_export import ExcelExporter
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 
+from ui.execution_dashboard import ExecutionDashboard
+
 
 class FinalKindleLogAnalyzer(QMainWindow):
     def __init__(self):
@@ -260,6 +262,10 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
         # Comparison Tab
         self.create_comparison_tab()
+
+        # Execution Dashboard Tab
+        self.execution_dashboard = ExecutionDashboard()
+        self.tab_widget.addTab(self.execution_dashboard, "🚀 Execution Dashboard")
 
         layout.addWidget(self.tab_widget)
         panel.setLayout(layout)
