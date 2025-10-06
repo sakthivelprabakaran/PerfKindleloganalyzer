@@ -21,6 +21,14 @@ class SetupScreen(QWidget):
         setup_group.setFixedWidth(500)
         setup_layout = QVBoxLayout(setup_group)
 
+        # Back Button
+        back_layout = QHBoxLayout()
+        self.back_btn = QPushButton("<< Back to Launcher")
+        back_layout.addWidget(self.back_btn)
+        back_layout.addStretch()
+        setup_layout.addLayout(back_layout)
+        setup_layout.addSpacing(10)
+
         # Working Directory
         dir_layout = QHBoxLayout()
         self.dir_input = QLineEdit()
@@ -70,10 +78,6 @@ class SetupScreen(QWidget):
         self.start_btn = QPushButton("Start Execution")
         self.start_btn.setStyleSheet("font-size: 16px; padding: 10px;")
         setup_layout.addWidget(self.start_btn)
-
-        self.load_previous_btn = QPushButton("Load Previous Session")
-        self.load_previous_btn.setEnabled(False) # Disabled by default
-        setup_layout.addWidget(self.load_previous_btn)
 
         main_layout.addWidget(setup_group)
 

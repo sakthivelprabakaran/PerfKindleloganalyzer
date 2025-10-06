@@ -80,12 +80,7 @@ class ExecutionDashboard(QWidget):
         results_tab = QWidget()
         layout = QVBoxLayout(results_tab)
         self.results_table = QTableWidget()
-        # Adjusted column count to include new columns
-        self.results_table.setColumnCount(9)
-        self.results_table.setHorizontalHeaderLabels([
-            "Test Case Name", "Iteration1", "Iteration2", "Iteration3",
-            "Iteration4", "Iteration5", "Average", "Remember", "Build Details"
-        ])
+        # Columns will be set dynamically when data is loaded
         self.results_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         layout.addWidget(self.results_table)
         return results_tab
