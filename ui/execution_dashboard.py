@@ -1,12 +1,10 @@
 import sys
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QTextEdit, QTableWidget, QTabWidget, QTableWidgetItem, QHeaderView
+    QTextEdit, QTableWidget, QTabWidget, QTableWidgetItem, QHeaderView,
+    QScrollArea, QGroupBox
 )
-from PyQt5.QtCore import Qt, QTimer, QTime
-from PyQt5.QtGui import QFont
-
-from logic.data_manager import DataManager
+from PyQt5.QtCore import Qt
 
 class ExecutionDashboard(QWidget):
     """The right-hand panel of the Execution Dashboard."""
@@ -31,30 +29,49 @@ class ExecutionDashboard(QWidget):
         layout.addWidget(self.tab_widget)
 
     def create_details_tab(self):
-        """Creates the tab for displaying test case details."""
+        """Creates the tab for displaying test case details with a dynamic layout."""
         details_tab = QWidget()
-        layout = QVBoxLayout(details_tab)
+        main_layout = QVBoxLayout(details_tab)
 
-        self.test_case_id_label = QLabel("ID: N/A")
-        self.test_case_name_label = QLabel("Name: N/A")
-        self.n_points_label = QLabel("N-Points: N/A")
+        # Use a scroll area to handle potentially long content
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        main_layout.addWidget(scroll_area)
 
-        layout.addWidget(self.test_case_id_label)
-        layout.addWidget(self.test_case_name_label)
+        content_widget = QWidget()
+        scroll_area.setWidget(content_widget)
+        layout = QVBoxLayout(content_widget)
 
-        self.prereq_area = QTextEdit()
-        self.prereq_area.setReadOnly(True)
-        self.prereq_area.setPlaceholderText("Pre-requisites...")
+        # --- Test Case Info ---
+        info_group = QGroupBox("Test Case Information")
+        info_layout = QVBoxLayout(info_group)
+        self.test_case_id_label = QLabel("<b>ID:</b> N/A")
+        self.test_case_name_label = QLabel("<b>Name:</b> N/A")
+        self.n_points_label = QLabel("<b>N-Points:</b> N/A")
+        info_layout.addWidget(self.test_case_id_label)
+        info_layout.addWidget(self.test_case_name_label)
+        info_layout.addWidget(self.n_points_label)
+        layout.addWidget(info_group)
 
-        self.test_steps_area = QTextEdit()
-        self.test_steps_area.setReadOnly(True)
-        self.test_steps_area.setPlaceholderText("Test Steps...")
+        # --- Pre-requisites ---
+        prereq_group = QGroupBox("Pre-requisites")
+        prereq_layout = QVBoxLayout(prereq_group)
+        self.prereq_area = QLabel("N/A")
+        self.prereq_area.setWordWrap(True)
+        self.prereq_area.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        prereq_layout.addWidget(self.prereq_area)
+        layout.addWidget(prereq_group)
 
-        layout.addWidget(QLabel("Pre-requisites:"))
-        layout.addWidget(self.prereq_area)
-        layout.addWidget(QLabel("Test Steps:"))
-        layout.addWidget(self.test_steps_area)
-        layout.addWidget(self.n_points_label)
+        # --- Test Steps ---
+        steps_group = QGroupBox("Test Steps")
+        steps_layout = QVBoxLayout(steps_group)
+        self.test_steps_area = QLabel("N/A")
+        self.test_steps_area.setWordWrap(True)
+        self.test_steps_area.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        steps_layout.addWidget(self.test_steps_area)
+        layout.addWidget(steps_group)
+
+        layout.addStretch()  # Push everything to the top
 
         return details_tab
 
@@ -63,10 +80,11 @@ class ExecutionDashboard(QWidget):
         results_tab = QWidget()
         layout = QVBoxLayout(results_tab)
         self.results_table = QTableWidget()
-        self.results_table.setColumnCount(7)
+        # Adjusted column count to include new columns
+        self.results_table.setColumnCount(9)
         self.results_table.setHorizontalHeaderLabels([
             "Test Case Name", "Iteration1", "Iteration2", "Iteration3",
-            "Iteration4", "Iteration5", "Average"
+            "Iteration4", "Iteration5", "Average", "Remember", "Build Details"
         ])
         self.results_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         layout.addWidget(self.results_table)
@@ -75,15 +93,19 @@ class ExecutionDashboard(QWidget):
 if __name__ == '__main__':
     # This is for testing purposes only
     app = QApplication(sys.argv)
-    # The dashboard now expects to be managed by the main window
-    # but we can create a dummy version for testing.
     class TestWindow(QWidget):
         def __init__(self):
             super().__init__()
-            layout = QHBoxLayout(self)
-            layout.addWidget(ExecutionDashboard())
             self.setWindowTitle("Test Execution Dashboard Panel")
+            layout = QVBoxLayout(self)
+            dashboard = ExecutionDashboard()
+            # Example of setting long text to demonstrate dynamic layout
+            dashboard.test_case_id_label.setText("<b>ID:</b> P0-TC1")
+            dashboard.test_case_name_label.setText("<b>Name:</b> This is a very long test case name to see how the UI handles it wrapping around.")
+            dashboard.prereq_area.setText("This is a very long pre-requisite that should wrap multiple lines. " * 5)
+            dashboard.test_steps_area.setText("1. Do the first thing.\n2. Do the second thing which is also very long and should wrap properly.\n" * 3)
+            layout.addWidget(dashboard)
+            self.resize(800, 600)
             self.show()
-
     win = TestWindow()
     sys.exit(app.exec_())
