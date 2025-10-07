@@ -2,4 +2,3 @@ PyQt5
 reportlab
 openpyxl
 matplotlib
-pandas
