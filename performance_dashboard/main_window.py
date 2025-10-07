@@ -1,29 +1,29 @@
-from PyQt5.QtWidgets import QMainWindow, QStackedWidget, QApplication
+from PyQt5.QtWidgets import QWidget, QStackedWidget, QVBoxLayout
 from .logic.state_manager import StateManager
 from .logic.data_manager import DataManager
 from .ui.launch_page import LauncherScreen
 from .ui.execution_dashboard import ExecutionDashboard
 import os
 
-class MainWindow(QMainWindow):
-    """The main application window that manages different screens."""
+class MainWindow(QWidget):
+    """A container widget for the Performance Dashboard application."""
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Performance Execution Dashboard")
-        self.setGeometry(100, 100, 1200, 800)
-
         self.state_manager = StateManager()
-        self.data_manager = None # Instantiated when a session starts
+        self.data_manager = None  # Instantiated when a session starts
+
+        # Main layout for this container widget
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
 
         self.stacked_widget = QStackedWidget()
-        self.setCentralWidget(self.stacked_widget)
+        main_layout.addWidget(self.stacked_widget)
 
         # Create and add screens
         self.launcher_screen = LauncherScreen(self.state_manager, self.switch_to_dashboard)
-        self.execution_dashboard = None # Created when needed
+        self.execution_dashboard = None  # Created when needed
 
         self.stacked_widget.addWidget(self.launcher_screen)
-
         self.load_styles()
 
     def load_styles(self):

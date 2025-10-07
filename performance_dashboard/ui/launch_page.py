@@ -82,10 +82,16 @@ class LauncherScreen(QWidget):
         return panel
 
     def create_right_panel(self):
-        """Creates the right panel for displaying saved sessions."""
+        """Creates the right panel for displaying and managing saved sessions."""
         panel = QGroupBox("Saved Sessions")
         layout = QVBoxLayout()
         panel.setLayout(layout)
+
+        # Search bar
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search sessions by device, week, priority, etc...")
+        self.search_input.textChanged.connect(self.filter_sessions)
+        layout.addWidget(self.search_input)
 
         # Session Table
         self.session_table = QTableWidget()
@@ -96,12 +102,19 @@ class LauncherScreen(QWidget):
         self.session_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.session_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.session_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.session_table.setSortingEnabled(True)
         layout.addWidget(self.session_table)
 
-        # Open Session Button
-        open_session_btn = QPushButton("Open Selected Session")
+        # Buttons Layout
+        buttons_layout = QHBoxLayout()
+        open_session_btn = QPushButton("Open Selected")
         open_session_btn.clicked.connect(self.open_selected_session)
-        layout.addWidget(open_session_btn)
+        remove_session_btn = QPushButton("Remove Selected")
+        remove_session_btn.clicked.connect(self.remove_selected_session)
+
+        buttons_layout.addWidget(open_session_btn)
+        buttons_layout.addWidget(remove_session_btn)
+        layout.addLayout(buttons_layout)
 
         return panel
 
@@ -114,14 +127,16 @@ class LauncherScreen(QWidget):
     def load_session_table(self):
         """Populates the session table with data from the state manager."""
         self.state.load_sessions()
-        self.session_table.setRowCount(len(self.state.sessions))
-        for i, session in enumerate(self.state.sessions):
-            self.session_table.setItem(i, 0, QTableWidgetItem(session.get("device_name", "")))
-            self.session_table.setItem(i, 1, QTableWidgetItem(str(session.get("week", ""))))
-            self.session_table.setItem(i, 2, QTableWidgetItem(session.get("build_details", "")))
-            self.session_table.setItem(i, 3, QTableWidgetItem(session.get("priority", "")))
-            self.session_table.setItem(i, 4, QTableWidgetItem(session.get("file_name", "")))
-            self.session_table.setItem(i, 5, QTableWidgetItem(session.get("status", "")))
+        self.session_table.setRowCount(0) # Clear the table first
+        for session in self.state.sessions:
+            row_position = self.session_table.rowCount()
+            self.session_table.insertRow(row_position)
+            self.session_table.setItem(row_position, 0, QTableWidgetItem(session.get("device_name", "")))
+            self.session_table.setItem(row_position, 1, QTableWidgetItem(str(session.get("week", ""))))
+            self.session_table.setItem(row_position, 2, QTableWidgetItem(session.get("build_details", "")))
+            self.session_table.setItem(row_position, 3, QTableWidgetItem(session.get("priority", "")))
+            self.session_table.setItem(row_position, 4, QTableWidgetItem(session.get("file_name", "")))
+            self.session_table.setItem(row_position, 5, QTableWidgetItem(session.get("status", "")))
         self.session_table.resizeColumnsToContents()
 
     def start_new_session(self):
@@ -145,6 +160,44 @@ class LauncherScreen(QWidget):
         # For now, we just switch views
         self.switch_to_dashboard(session_data)
 
+    def filter_sessions(self):
+        """Hides or shows rows based on the search text."""
+        search_text = self.search_input.text().lower()
+        for i in range(self.session_table.rowCount()):
+            match = False
+            for j in range(self.session_table.columnCount()):
+                item = self.session_table.item(i, j)
+                if item and search_text in item.text().lower():
+                    match = True
+                    break
+            self.session_table.setRowHidden(i, not match)
+
+    def remove_selected_session(self):
+        """Removes the selected session from the list (not the file)."""
+        selected_rows = self.session_table.selectionModel().selectedRows()
+        if not selected_rows:
+            QMessageBox.warning(self, "Selection Error", "Please select a session to remove.")
+            return
+
+        selected_row_index = selected_rows[0].row()
+
+        # Get the unique file name to identify the session in the state manager
+        file_name_item = self.session_table.item(selected_row_index, 4)
+        if not file_name_item:
+            return # Should not happen
+
+        reply = QMessageBox.question(self, 'Confirm Removal',
+                                     f"Are you sure you want to remove the session '{file_name_item.text()}' from the list?",
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+
+        if reply == QMessageBox.Yes:
+            session_removed = self.state.remove_session_by_filename(file_name_item.text())
+            if session_removed:
+                self.session_table.removeRow(selected_row_index)
+                QMessageBox.information(self, "Success", "Session removed from the list.")
+            else:
+                QMessageBox.warning(self, "Error", "Could not find the session to remove.")
+
     def open_selected_session(self):
         """Opens an existing session from the table."""
         selected_rows = self.session_table.selectionModel().selectedRows()
@@ -152,11 +205,18 @@ class LauncherScreen(QWidget):
             QMessageBox.warning(self, "Selection Error", "Please select a session to open.")
             return
 
-        selected_row = selected_rows[0].row()
-        session_data = self.state.sessions[selected_row]
-        self.state.set_current_session(session_data)
+        selected_row_index = selected_rows[0].row()
+        file_name_item = self.session_table.item(selected_row_index, 4)
+        if not file_name_item:
+            return
 
-        self.switch_to_dashboard(session_data)
+        # Find the session data from the state manager using the unique file name
+        session_data = self.state.get_session_by_filename(file_name_item.text())
+        if session_data:
+            self.state.set_current_session(session_data)
+            self.switch_to_dashboard(session_data)
+        else:
+            QMessageBox.warning(self, "Error", "Could not find session data.")
 
     def refresh_view(self):
         """Refreshes the view, e.g., when returning to the launcher."""

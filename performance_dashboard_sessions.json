@@ -1,0 +1,14 @@
+[
+    {
+        "project_path": "/tmp/jules-test-session",
+        "device_name": "TestDevice",
+        "week": "1",
+        "build_details": "Build-123",
+        "priority": "P0",
+        "file_name": "P0_TestDevice_Week_1.xlsx",
+        "status": "In Progress",
+        "current_test_case_index": 0,
+        "current_iteration": 1,
+        "active_sheet": "P0"
+    }
+]

@@ -70,3 +70,19 @@ class StateManager:
 
     def get_active_sheet(self):
         return self.current_session.get('active_sheet', 'P0') if self.current_session else 'P0'
+
+    def get_session_by_filename(self, filename):
+        """Finds and returns a session from the list by its filename."""
+        for session in self.sessions:
+            if session.get('file_name') == filename:
+                return session
+        return None
+
+    def remove_session_by_filename(self, filename):
+        """Removes a session from the list by its filename and saves the state."""
+        session_to_remove = self.get_session_by_filename(filename)
+        if session_to_remove:
+            self.sessions.remove(session_to_remove)
+            self.save_sessions()
+            return True
+        return False

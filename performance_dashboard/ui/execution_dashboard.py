@@ -1,10 +1,10 @@
 import time
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QGroupBox, QLabel, QPushButton,
-    QTextEdit, QTableWidget, QTabWidget, QSplitter, QLCDNumber,
+    QTextEdit, QTableWidget, QTabWidget, QSplitter,
     QTableWidgetItem, QHeaderView, QMessageBox, QFrame
 )
-from PyQt5.QtGui import QPainter
+from PyQt5.QtGui import QPainter, QFont
 from PyQt5.QtCore import Qt, QTimer, QTime
 
 class CircleIndicator(QWidget):
@@ -87,10 +87,18 @@ class ExecutionDashboard(QWidget):
         layout.addWidget(self.priority_label)
 
         # Timer Display
-        self.timer_display = QLCDNumber()
-        self.timer_display.setSegmentStyle(QLCDNumber.Flat)
-        self.timer_display.setDigitCount(12)
-        self.timer_display.display("00:00.000")
+        self.timer_display = QLabel("00:00.000")
+        self.timer_display.setAlignment(Qt.AlignCenter)
+        self.timer_display.setFont(QFont("Arial", 50, QFont.Bold))
+        self.timer_display.setStyleSheet("""
+            QLabel {
+                background-color: #2B2B2B;
+                color: #4CAF50;
+                border: 2px solid #555;
+                border-radius: 10px;
+                padding: 10px;
+            }
+        """)
         layout.addWidget(self.timer_display)
 
         # Timer Controls
@@ -250,7 +258,7 @@ class ExecutionDashboard(QWidget):
 
     def update_timer_display(self):
         self.elapsed_time = self.elapsed_time.addMSecs(10)
-        self.timer_display.display(self.elapsed_time.toString("mm:ss.zzz"))
+        self.timer_display.setText(self.elapsed_time.toString("mm:ss.zzz")[:-1])
 
     def confirm_iteration(self):
         """Saves the current time and moves to the next iteration."""
@@ -279,7 +287,7 @@ class ExecutionDashboard(QWidget):
         if self.timer.isActive():
             self.timer.stop()
         self.elapsed_time.setHMS(0, 0, 0, 0)
-        self.timer_display.display("00:00.000")
+        self.timer_display.setText("00:00.000")
         self.start_stop_btn.setText("Start (Space)")
         self.confirm_iteration_btn.setEnabled(False)
         self.update_iteration_indicators()

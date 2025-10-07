@@ -31,7 +31,8 @@ class DataManager:
     def load_data(self):
         """Loads the data from the current sheet into a pandas DataFrame."""
         try:
-            self.workbook = pd.read_excel(self.file_path, sheet_name=None)
+            # keep_default_na=False prevents pandas from reading empty cells as 'NaN'
+            self.workbook = pd.read_excel(self.file_path, sheet_name=None, keep_default_na=False)
         except FileNotFoundError:
             self.workbook = None
             print(f"Error: File not found at {self.file_path}")
@@ -46,7 +47,8 @@ class DataManager:
         """Retrieves a single test case by its index from the specified sheet."""
         sheet_data = self.get_sheet_data(sheet_name)
         if not sheet_data.empty and 0 <= index < len(sheet_data):
-            return sheet_data.iloc[index]
+            # Fill any remaining NA-like values just in case, for display
+            return sheet_data.iloc[index].fillna('')
         return None
 
     def get_test_case_count(self, sheet_name):
@@ -131,6 +133,8 @@ class DataManager:
             # Ensure all required columns exist, fill missing with None
             for col in results_columns:
                 if col not in sheet_data.columns:
-                    sheet_data[col] = None
-            return sheet_data[results_columns]
+                    sheet_data[col] = ''
+
+            # Return a copy and fill any remaining NaNs for display
+            return sheet_data[results_columns].fillna('')
         return pd.DataFrame()
