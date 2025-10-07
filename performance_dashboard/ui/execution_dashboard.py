@@ -28,6 +28,30 @@ class CircleIndicator(QWidget):
         painter.drawEllipse(0, 0, 18, 18)
 
 
+class DynamicHeightTextEdit(QTextEdit):
+    """A QTextEdit that automatically adjusts its height to fit its content."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setReadOnly(True)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.textChanged.connect(self.update_height)
+
+    def update_height(self):
+        # A QTimer ensures this runs after the main event loop has processed text changes
+        QTimer.singleShot(0, self._adjust_height)
+
+    def _adjust_height(self):
+        doc = self.document()
+        # Calculate the required height and add a small margin
+        height = doc.size().height() + doc.documentMargin()
+        self.setMinimumHeight(int(height))
+
+    def setText(self, text):
+        super().setText(text)
+        # Give the layout a moment to register the new text before resizing
+        self.update_height()
+
+
 class ExecutionDashboard(QWidget):
     """
     The main dashboard for test case execution, timing, and data entry.
@@ -44,6 +68,7 @@ class ExecutionDashboard(QWidget):
 
         self.current_test_case = None
         self.total_test_cases = 0
+        self.total_n_points = 0
 
         self.init_ui()
 
@@ -56,6 +81,8 @@ class ExecutionDashboard(QWidget):
         self.session_info_label = QLabel("Session: N/A")
         top_bar_layout.addWidget(self.session_info_label)
         top_bar_layout.addStretch()
+        self.total_n_points_label = QLabel("<b>Total N-Points: 0</b>")
+        top_bar_layout.addWidget(self.total_n_points_label)
         save_return_btn = QPushButton("Save & Return to Launcher")
         save_return_btn.clicked.connect(self.save_and_return)
         top_bar_layout.addWidget(save_return_btn)
@@ -144,7 +171,7 @@ class ExecutionDashboard(QWidget):
         layout.addWidget(QLabel("Notes:"))
         self.notes_input = QTextEdit()
         self.notes_input.setPlaceholderText("Enter notes for the current test case...")
-        self.notes_input.focusOutEvent = self.auto_save_notes # Monkey-patch focusOutEvent
+        # Note: saving is now handled explicitly on navigation or save.
         layout.addWidget(self.notes_input)
 
         return panel
@@ -163,23 +190,46 @@ class ExecutionDashboard(QWidget):
         details_layout = QVBoxLayout()
         details_tab.setLayout(details_layout)
 
-        details_layout.addWidget(QLabel("<b>Test Case ID:</b>"))
+        info_layout = QHBoxLayout()
+
+        id_layout = QVBoxLayout()
+        id_layout.addWidget(QLabel("<b>Test Case ID:</b>"))
         self.tc_id_label = QLabel("N/A")
-        details_layout.addWidget(self.tc_id_label)
+        id_layout.addWidget(self.tc_id_label)
+        info_layout.addLayout(id_layout)
+
+        n_points_layout = QVBoxLayout()
+        n_points_layout.addWidget(QLabel("<b>N-Points:</b>"))
+        self.n_points_label = QLabel("0")
+        self.n_points_label.setFont(QFont("Arial", 10, QFont.Bold))
+        n_points_layout.addWidget(self.n_points_label)
+        info_layout.addLayout(n_points_layout)
+
+        info_layout.addStretch()
+        details_layout.addLayout(info_layout)
 
         details_layout.addWidget(QLabel("<b>Test Case Name:</b>"))
         self.tc_name_label = QLabel("N/A")
+        self.tc_name_label.setFont(QFont("Arial", 12, QFont.Bold))
         details_layout.addWidget(self.tc_name_label)
 
         details_layout.addWidget(QLabel("<b>Pre-requisites:</b>"))
-        self.tc_prereq_text = QTextEdit()
-        self.tc_prereq_text.setReadOnly(True)
+        self.tc_prereq_text = DynamicHeightTextEdit()
+        self.tc_prereq_text.setMaximumHeight(150) # Prevent excessive growth
         details_layout.addWidget(self.tc_prereq_text)
 
         details_layout.addWidget(QLabel("<b>Test Steps:</b>"))
-        self.tc_steps_text = QTextEdit()
-        self.tc_steps_text.setReadOnly(True)
+        self.tc_steps_text = DynamicHeightTextEdit()
+        self.tc_steps_text.setMaximumHeight(300) # Allow more space for steps
         details_layout.addWidget(self.tc_steps_text)
+
+        details_layout.addStretch()
+
+        # Add a section for current results
+        results_group = QGroupBox("Current Iteration Results")
+        self.current_results_layout = QHBoxLayout()
+        results_group.setLayout(self.current_results_layout)
+        details_layout.addWidget(results_group)
 
         self.tabs.addTab(details_tab, "Test Case Details")
 
@@ -189,7 +239,8 @@ class ExecutionDashboard(QWidget):
         results_tab.setLayout(results_layout)
 
         self.results_table = QTableWidget()
-        self.results_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.results_table.setEditTriggers(QTableWidget.DoubleClicked)
+        self.results_table.itemChanged.connect(self.manual_result_edit)
         self.results_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         results_layout.addWidget(self.results_table)
 
@@ -209,6 +260,7 @@ class ExecutionDashboard(QWidget):
         self.priority_label.setText(f"<b>Priority Sheet:</b> {active_sheet}")
 
         self.total_test_cases = self.data_manager.get_test_case_count(active_sheet)
+        self.update_total_n_points() # Calculate initial N-Points
         self.load_test_case_by_index(self.state.get_current_test_case_index())
         self.update_results_tab()
 
@@ -220,13 +272,15 @@ class ExecutionDashboard(QWidget):
         if self.current_test_case is not None:
             self.state.update_current_session('current_test_case_index', index)
 
-            self.tc_id_label.setText(str(self.current_test_case.get("Test Case ID", "N/A")))
-            self.tc_name_label.setText(str(self.current_test_case.get("Test Case Name", "N/A")))
+            self.tc_id_label.setText(str(self.current_test_case.get("Test Case ID", "")))
+            self.tc_name_label.setText(str(self.current_test_case.get("Test Case Name", "")))
+            self.n_points_label.setText(str(self.current_test_case.get("N-Points", 0)))
             self.tc_prereq_text.setText(str(self.current_test_case.get("Pre-requisites", "")))
             self.tc_steps_text.setText(str(self.current_test_case.get("Test Steps", "")))
             self.notes_input.setText(str(self.current_test_case.get("Notes", "")))
 
             self.test_case_progress_label.setText(f"Test Case: {index + 1} / {self.total_test_cases}")
+            self.update_current_results_display()
             # Reset the iteration count for the new test case
             self.state.update_current_session('current_iteration', 1)
             self.reset_timer_and_iterations()
@@ -236,13 +290,13 @@ class ExecutionDashboard(QWidget):
     def navigate_next(self):
         current_index = self.state.get_current_test_case_index()
         if current_index + 1 < self.total_test_cases:
-            self.auto_save_notes(None) # Save notes before navigating
+            self.save_notes() # Save notes before navigating
             self.load_test_case_by_index(current_index + 1)
 
     def navigate_previous(self):
         current_index = self.state.get_current_test_case_index()
         if current_index > 0:
-            self.auto_save_notes(None) # Save notes before navigating
+            self.save_notes() # Save notes before navigating
             self.load_test_case_by_index(current_index - 1)
 
     def toggle_timer(self):
@@ -258,7 +312,7 @@ class ExecutionDashboard(QWidget):
 
     def update_timer_display(self):
         self.elapsed_time = self.elapsed_time.addMSecs(10)
-        self.timer_display.setText(self.elapsed_time.toString("mm:ss.zzz")[:-1])
+        self.timer_display.setText(self.elapsed_time.toString("mm:ss.zzz"))
 
     def confirm_iteration(self):
         """Saves the current time and moves to the next iteration."""
@@ -276,11 +330,17 @@ class ExecutionDashboard(QWidget):
         if current_iteration < 5:
             self.state.update_current_session('current_iteration', current_iteration + 1)
         else:
-            # Last iteration, maybe auto-navigate? For now, just reset.
+            # Last iteration, add N-Points to total and reset.
+            n_points = pd.to_numeric(self.current_test_case.get("N-Points", 0), errors='coerce')
+            if not pd.isna(n_points):
+                self.total_n_points += n_points
+                self.total_n_points_label.setText(f"<b>Total N-Points: {self.total_n_points}</b>")
+
             self.state.update_current_session('current_iteration', 1)
 
         self.reset_timer_and_iterations()
         self.update_results_tab()
+        self.update_current_results_display()
 
     def reset_timer_and_iterations(self):
         """Resets the timer and iteration UI elements."""
@@ -299,8 +359,8 @@ class ExecutionDashboard(QWidget):
             # Iterations are 1-based, index is 0-based
             indicator.set_active(i < current_iter - 1)
 
-    def auto_save_notes(self, event):
-        """Saves the notes when the text area loses focus."""
+    def save_notes(self):
+        """Saves the notes for the current test case."""
         if self.current_test_case is not None:
             notes = self.notes_input.toPlainText()
             self.data_manager.save_notes(
@@ -308,8 +368,6 @@ class ExecutionDashboard(QWidget):
                 self.state.get_current_test_case_index(),
                 notes
             )
-        if event:
-            super(QTextEdit, self.notes_input).focusOutEvent(event)
 
     def update_results_tab(self):
         """Refreshes the results table for the current sheet."""
@@ -323,18 +381,97 @@ class ExecutionDashboard(QWidget):
 
             for i in range(results_df.shape[0]):
                 for j in range(results_df.shape[1]):
-                    item = results_df.iloc[i, j]
+                    item_value = results_df.iloc[i, j]
                     # Format floats to 3 decimal places for display
-                    if isinstance(item, float):
-                        item = f"{item:.3f}"
-                    self.results_table.setItem(i, j, QTableWidgetItem(str(item)))
+                    if isinstance(item_value, float):
+                        item_value = f"{item_value:.3f}"
+
+                    table_item = QTableWidgetItem(str(item_value))
+
+                    # Make 'Test Case Name' and 'Average' columns read-only
+                    column_header = results_df.columns[j]
+                    if column_header == "Test Case Name" or column_header == "Average":
+                        table_item.setFlags(table_item.flags() & ~Qt.ItemIsEditable)
+
+                    self.results_table.setItem(i, j, table_item)
             self.results_table.resizeColumnsToContents()
 
     def save_and_return(self):
         """Saves final state and returns to the launcher screen."""
-        self.auto_save_notes(None) # Ensure last notes are saved
+        self.save_notes() # Ensure last notes are saved
         self.state.update_current_session('status', 'Completed') # Or some other status
         self.return_to_launcher()
+
+    def manual_result_edit(self, item):
+        """Handles manual editing of iteration values in the results table."""
+        self.results_table.itemChanged.disconnect(self.manual_result_edit)
+        try:
+            row_index = item.row()
+            column_index = item.column()
+            column_header = self.results_table.horizontalHeaderItem(column_index).text()
+
+            if "Iteration" not in column_header:
+                return
+
+            new_value_str = item.text()
+            try:
+                new_value = float(new_value_str)
+                iteration_number = int(column_header.replace("Iteration", ""))
+                self.data_manager.save_iteration_time(
+                    self.state.get_active_sheet(), row_index, iteration_number, new_value
+                )
+                self.update_total_n_points() # Recalculate totals after manual edit
+            except (ValueError, TypeError):
+                print(f"Invalid value: {new_value_str}. Reverting.")
+        finally:
+            self.update_results_tab()
+            self.update_current_results_display()
+            self.results_table.itemChanged.connect(self.manual_result_edit)
+
+    def update_total_n_points(self):
+        """Calculates the total N-Points for all completed test cases."""
+        active_sheet = self.state.get_active_sheet()
+        sheet_data = self.data_manager.get_sheet_data(active_sheet)
+        if sheet_data.empty or 'Average' not in sheet_data.columns:
+            return
+
+        # A test case is "complete" if its Average is not empty/null.
+        completed_tcs = sheet_data[pd.to_numeric(sheet_data['Average'], errors='coerce').notna()]
+
+        # Sum N-Points for completed test cases
+        self.total_n_points = pd.to_numeric(completed_tcs['N-Points'], errors='coerce').sum()
+        self.total_n_points_label.setText(f"<b>Total N-Points: {self.total_n_points}</b>")
+
+    def update_current_results_display(self):
+        """Updates the compact results view on the Test Case Details tab."""
+        # Clear previous results by taking them from the layout
+        while self.current_results_layout.count():
+            child = self.current_results_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        if self.current_test_case is None:
+            return
+
+        for i in range(1, 6):
+            iter_value = self.current_test_case.get(f"Iteration{i}", "")
+            if isinstance(iter_value, float):
+                iter_value = f"{iter_value:.3f}"
+
+            result_label = QLabel(f"<b>IT{i}:</b> {iter_value}")
+            result_label.setFrameStyle(QFrame.StyledPanel | QFrame.Sunken)
+            result_label.setMinimumWidth(80)
+            self.current_results_layout.addWidget(result_label)
+
+        avg_value = self.current_test_case.get("Average", "")
+        if isinstance(avg_value, float):
+            avg_value = f"{avg_value:.3f}"
+        avg_label = QLabel(f"<b>AVG:</b> {avg_value}")
+        avg_label.setFrameStyle(QFrame.StyledPanel | QFrame.Sunken)
+        avg_label.setStyleSheet("background-color: #E0E0E0;")
+        self.current_results_layout.addWidget(avg_label)
+
+        self.current_results_layout.addStretch()
 
     def keyPressEvent(self, event):
         """Handle keyboard shortcuts."""

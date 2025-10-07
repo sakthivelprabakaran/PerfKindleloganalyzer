@@ -10,10 +10,11 @@ class LauncherScreen(QWidget):
     The initial screen for the Performance Execution Dashboard.
     Provides options to create a new session or open a saved one.
     """
-    def __init__(self, state_manager, switch_to_dashboard_callback):
+    def __init__(self, state_manager, switch_to_dashboard_callback, back_to_launcher_callback=None):
         super().__init__()
         self.state = state_manager
         self.switch_to_dashboard = switch_to_dashboard_callback
+        self.back_to_launcher_callback = back_to_launcher_callback
         self.init_ui()
         self.load_session_table()
 
@@ -115,6 +116,11 @@ class LauncherScreen(QWidget):
         buttons_layout.addWidget(open_session_btn)
         buttons_layout.addWidget(remove_session_btn)
         layout.addLayout(buttons_layout)
+
+        if self.back_to_launcher_callback:
+            back_btn = QPushButton("⬅️ Back to Main Launcher")
+            back_btn.clicked.connect(self.back_to_launcher_callback)
+            layout.addWidget(back_btn)
 
         return panel
 

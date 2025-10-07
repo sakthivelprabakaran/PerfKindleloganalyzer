@@ -23,8 +23,8 @@ class ApplicationContainer(QMainWindow):
             self.launch_log_analyzer,
             self.launch_exec_dashboard
         )
-        self.log_analyzer = FinalKindleLogAnalyzer()
-        self.exec_dashboard = PerformanceDashboard()
+        self.log_analyzer = FinalKindleLogAnalyzer(back_to_launcher_callback=self.back_to_launcher)
+        self.exec_dashboard = PerformanceDashboard(back_to_launcher_callback=self.back_to_launcher)
 
         # Add them to the stack
         self.stacked_widget.addWidget(self.universal_launcher)
@@ -43,6 +43,11 @@ class ApplicationContainer(QMainWindow):
         """Switches the view to the Performance Execution Dashboard."""
         self.setWindowTitle("Performance Execution Dashboard")
         self.stacked_widget.setCurrentWidget(self.exec_dashboard)
+
+    def back_to_launcher(self):
+        """Switches the view back to the universal launcher."""
+        self.setWindowTitle("Kindle Test Engineering Tools")
+        self.stacked_widget.setCurrentWidget(self.universal_launcher)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

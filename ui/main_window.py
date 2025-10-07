@@ -28,8 +28,9 @@ from openpyxl.styles import Font, Alignment, PatternFill
 
 
 class FinalKindleLogAnalyzer(QMainWindow):
-    def __init__(self):
+    def __init__(self, back_to_launcher_callback=None):
         super().__init__()
+        self.back_to_launcher_callback = back_to_launcher_callback
         self.state = StateManager()
         self.comparison_result_a = None
         self.comparison_result_b = None
@@ -233,6 +234,12 @@ class FinalKindleLogAnalyzer(QMainWindow):
         layout.addWidget(export_group)
 
         layout.addStretch()
+
+        if self.back_to_launcher_callback:
+            back_btn = QPushButton("⬅️ Back to Launcher")
+            back_btn.clicked.connect(self.back_to_launcher_callback)
+            layout.addWidget(back_btn)
+
         panel.setLayout(layout)
         return panel
 

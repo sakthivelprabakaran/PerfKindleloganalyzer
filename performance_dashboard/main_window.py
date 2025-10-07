@@ -7,8 +7,9 @@ import os
 
 class MainWindow(QWidget):
     """A container widget for the Performance Dashboard application."""
-    def __init__(self):
+    def __init__(self, back_to_launcher_callback=None):
         super().__init__()
+        self.back_to_launcher_callback = back_to_launcher_callback
         self.state_manager = StateManager()
         self.data_manager = None  # Instantiated when a session starts
 
@@ -20,7 +21,11 @@ class MainWindow(QWidget):
         main_layout.addWidget(self.stacked_widget)
 
         # Create and add screens
-        self.launcher_screen = LauncherScreen(self.state_manager, self.switch_to_dashboard)
+        self.launcher_screen = LauncherScreen(
+            self.state_manager,
+            self.switch_to_dashboard,
+            self.back_to_launcher_callback
+        )
         self.execution_dashboard = None  # Created when needed
 
         self.stacked_widget.addWidget(self.launcher_screen)
