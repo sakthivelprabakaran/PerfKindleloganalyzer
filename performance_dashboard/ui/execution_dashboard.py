@@ -65,6 +65,9 @@ class ExecutionDashboard(QWidget):
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_timer_display)
+        self.note_button_timer = QTimer(self)
+        self.note_button_timer.setSingleShot(True)
+        self.note_button_timer.timeout.connect(lambda: self.add_note_btn.setText("Add Note"))
         self.start_time = 0
         self.recorded_time = 0
         self.current_iteration = 1
@@ -401,7 +404,7 @@ class ExecutionDashboard(QWidget):
             if updated_test_case is not None:
                 self.current_test_case = updated_test_case
                 self.add_note_btn.setText("Note Saved!")
-                QTimer.singleShot(2000, lambda: self.add_note_btn.setText("Add Note"))
+                self.note_button_timer.start(2000) # Reset text after 2 seconds
 
     def update_results_tab(self):
         """Refreshes the results table for the current sheet."""
@@ -409,6 +412,7 @@ class ExecutionDashboard(QWidget):
         results_df = self.data_manager.get_all_results(active_sheet)
 
         if results_df is not None and not results_df.empty:
+            self.results_table.blockSignals(True) # Block signals during population
             self.results_table.setRowCount(results_df.shape[0])
             self.results_table.setColumnCount(results_df.shape[1])
             self.results_table.setHorizontalHeaderLabels(results_df.columns)
@@ -429,10 +433,12 @@ class ExecutionDashboard(QWidget):
 
                     self.results_table.setItem(i, j, table_item)
             self.results_table.resizeColumnsToContents()
+            self.results_table.blockSignals(False) # Re-enable signals
 
     def save_and_return(self):
         """Saves final state and returns to the launcher screen."""
-        self.save_notes() # Ensure last notes are saved
+        self.note_button_timer.stop() # Stop the timer to prevent crash
+        # self.save_notes() # No longer needed as it's explicit
         self.state.update_current_session('status', 'Completed') # Or some other status
         self.return_to_launcher()
 

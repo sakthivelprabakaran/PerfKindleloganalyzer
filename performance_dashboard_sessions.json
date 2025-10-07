@@ -1,12 +1,12 @@
 [
     {
         "project_path": "/tmp/jules-test-session",
-        "device_name": "Final-Fix-Device",
+        "device_name": "Crash-Test-Device",
         "week": "1",
-        "build_details": "Build-Final-Fix",
+        "build_details": "Build-Crash-Test",
         "priority": "P0",
-        "file_name": "P0_Final-Fix-Device_Week_1.xlsx",
-        "status": "In Progress",
+        "file_name": "P0_Crash-Test-Device_Week_1.xlsx",
+        "status": "Completed",
         "current_test_case_index": 0,
         "current_iteration": 1,
         "active_sheet": "P0"
