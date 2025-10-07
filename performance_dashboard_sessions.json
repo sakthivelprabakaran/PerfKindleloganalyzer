@@ -1,0 +1,12 @@
+[
+    {
+        "project_path": "/tmp/jules-restored-session",
+        "device_name": "Restored-Device",
+        "week": "1",
+        "build_details": "Build-Restored",
+        "priority": "P0",
+        "file_name": "P0_Restored-Device_Week_1.xlsx",
+        "status": "Completed",
+        "current_test_case_index": 0
+    }
+]
