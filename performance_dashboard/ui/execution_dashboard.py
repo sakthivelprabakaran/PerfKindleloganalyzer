@@ -333,12 +333,15 @@ class ExecutionDashboard(QWidget):
             QMessageBox.information(self, "Completed", "All iterations for this test case are complete.")
             return
 
-        self.data_manager.save_iteration_time(
+        updated_test_case = self.data_manager.save_iteration_time(
             self.state.get_active_sheet(),
             self.state.get_current_test_case_index(),
             self.current_iteration,
             self.recorded_time
         )
+
+        if updated_test_case is not None:
+            self.current_test_case = updated_test_case
 
         # Check if all iterations are now complete to update N-Points
         self.determine_next_iteration() # This will now set current_iteration to 6 if complete
@@ -441,9 +444,12 @@ class ExecutionDashboard(QWidget):
             try:
                 new_value = float(new_value_str)
                 iteration_number = int(column_header.replace("Iteration", ""))
-                self.data_manager.save_iteration_time(
+                updated_test_case = self.data_manager.save_iteration_time(
                     self.state.get_active_sheet(), row_index, iteration_number, new_value
                 )
+                if updated_test_case is not None:
+                    self.current_test_case = updated_test_case
+
                 self.update_total_n_points() # Recalculate totals after manual edit
             except (ValueError, TypeError):
                 print(f"Invalid value: {new_value_str}. Reverting.")

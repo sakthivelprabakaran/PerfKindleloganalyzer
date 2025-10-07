@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QWidget, QStackedWidget, QVBoxLayout
+from PyQt5.QtWidgets import QWidget, QStackedWidget, QVBoxLayout, QMessageBox
 from .logic.state_manager import StateManager
 from .logic.data_manager import DataManager
 from .ui.launch_page import LauncherScreen
@@ -45,13 +45,11 @@ class MainWindow(QWidget):
         if not os.path.exists(os.path.join(session_data['project_path'], session_data['file_name'])):
             success, message = DataManager.create_session_file(session_data)
             if not success:
-                # If file creation fails, show an error and stay on the launcher
-                # (A QMessageBox is shown in LauncherScreen, but a more robust error could be here)
-                print(f"Error: {message}") # Logging the error
+                QMessageBox.critical(self, "File Creation Error", message)
                 return
 
         # Instantiate DataManager for the selected session
-        self.data_manager = DataManager(session_data, self.state_manager)
+        self.data_manager = DataManager(session_data)
 
         # If the dashboard for this session doesn't exist, create it
         if self.execution_dashboard:
@@ -69,7 +67,14 @@ class MainWindow(QWidget):
         self.execution_dashboard.load_session_data()
 
     def switch_to_launcher(self):
-        """Switches the view back to the Launcher screen."""
+        """Saves the session to Excel and switches the view back to the Launcher screen."""
+        if self.data_manager:
+            success, message = self.data_manager.save_to_excel()
+            if success:
+                QMessageBox.information(self, "Success", message)
+            else:
+                QMessageBox.warning(self, "Save Error", message)
+
         self.launcher_screen.refresh_view()
         self.stacked_widget.setCurrentWidget(self.launcher_screen)
         if self.execution_dashboard:
