@@ -1,11 +1,11 @@
 [
     {
         "project_path": "/tmp/jules-test-session",
-        "device_name": "Bugfix-Test-Device",
+        "device_name": "Final-Fix-Device",
         "week": "1",
-        "build_details": "Build-Bugfix",
+        "build_details": "Build-Final-Fix",
         "priority": "P0",
-        "file_name": "P0_Bugfix-Test-Device_Week_1.xlsx",
+        "file_name": "P0_Final-Fix-Device_Week_1.xlsx",
         "status": "In Progress",
         "current_test_case_index": 0,
         "current_iteration": 1,

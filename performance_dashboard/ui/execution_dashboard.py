@@ -174,8 +174,10 @@ class ExecutionDashboard(QWidget):
         layout.addWidget(QLabel("Notes:"))
         self.notes_input = QTextEdit()
         self.notes_input.setPlaceholderText("Enter notes for the current test case...")
-        # Note: saving is now handled explicitly on navigation or save.
         layout.addWidget(self.notes_input)
+        self.add_note_btn = QPushButton("Add Note")
+        self.add_note_btn.clicked.connect(self.save_notes)
+        layout.addWidget(self.add_note_btn)
 
         return panel
 
@@ -301,13 +303,13 @@ class ExecutionDashboard(QWidget):
     def navigate_next(self):
         current_index = self.state.get_current_test_case_index()
         if current_index + 1 < self.total_test_cases:
-            self.save_notes() # Save notes before navigating
+            # Notes are now saved explicitly via the "Add Note" button
             self.load_test_case_by_index(current_index + 1)
 
     def navigate_previous(self):
         current_index = self.state.get_current_test_case_index()
         if current_index > 0:
-            self.save_notes() # Save notes before navigating
+            # Notes are now saved explicitly via the "Add Note" button
             self.load_test_case_by_index(current_index - 1)
 
     def toggle_timer(self):
@@ -333,11 +335,14 @@ class ExecutionDashboard(QWidget):
             QMessageBox.information(self, "Completed", "All iterations for this test case are complete.")
             return
 
+        # Format the recorded time to 3 decimal places for consistency
+        formatted_time = float(f"{self.recorded_time:.3f}")
+
         updated_test_case = self.data_manager.save_iteration_time(
             self.state.get_active_sheet(),
             self.state.get_current_test_case_index(),
             self.current_iteration,
-            self.recorded_time
+            formatted_time
         )
 
         if updated_test_case is not None:
@@ -392,9 +397,11 @@ class ExecutionDashboard(QWidget):
                 self.state.get_current_test_case_index(),
                 notes
             )
-            # Refresh the local test case data to ensure consistency
+            # Refresh the local test case data and provide user feedback
             if updated_test_case is not None:
                 self.current_test_case = updated_test_case
+                self.add_note_btn.setText("Note Saved!")
+                QTimer.singleShot(2000, lambda: self.add_note_btn.setText("Add Note"))
 
     def update_results_tab(self):
         """Refreshes the results table for the current sheet."""
