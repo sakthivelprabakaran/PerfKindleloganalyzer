@@ -86,7 +86,8 @@ class DataManager:
                 if isinstance(cell_value, (int, float)):
                     iteration_times.append(cell_value)
 
-            if iteration_times:
+            # Only calculate the average if all 5 iterations are complete
+            if len(iteration_times) == 5:
                 average = sum(iteration_times) / len(iteration_times)
                 ws.cell(row=test_case_index + 2, column=avg_col, value=average)
 
@@ -99,21 +100,26 @@ class DataManager:
             print(f"Error saving time to Excel: {e}")
 
     def save_notes(self, sheet_name, test_case_index, notes):
-        """Saves notes for a specific test case."""
+        """Saves notes for a specific test case and returns the updated data."""
         try:
             wb = load_workbook(self.file_path)
             if sheet_name not in wb.sheetnames:
                 print(f"Error: Sheet '{sheet_name}' not found.")
-                return
+                return None
 
             ws = wb[sheet_name]
             notes_col = self.get_column_index_from_name(ws, "Notes")
             ws.cell(row=test_case_index + 2, column=notes_col, value=notes)
             wb.save(self.file_path)
+
             self.load_data() # Refresh pandas dataframe
+
+            # Return the updated test case data
+            return self.get_test_case(sheet_name, test_case_index)
 
         except Exception as e:
             print(f"Error saving notes to Excel: {e}")
+            return None
 
     def get_column_index_from_name(self, worksheet, column_name):
         """Finds the 1-based index of a column from its header name."""

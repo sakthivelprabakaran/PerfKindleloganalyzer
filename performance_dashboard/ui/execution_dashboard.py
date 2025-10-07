@@ -65,7 +65,9 @@ class ExecutionDashboard(QWidget):
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_timer_display)
-        self.elapsed_time = QTime(0, 0, 0, 0)
+        self.start_time = 0
+        self.recorded_time = 0
+        self.current_iteration = 1
 
         self.current_test_case = None
         self.total_test_cases = 0
@@ -228,8 +230,18 @@ class ExecutionDashboard(QWidget):
 
         # Add a section for current results
         results_group = QGroupBox("Current Iteration Results")
-        self.current_results_layout = QHBoxLayout()
-        results_group.setLayout(self.current_results_layout)
+        results_group_layout = QVBoxLayout()
+        self.current_results_table = QTableWidget()
+        self.current_results_table.setRowCount(1)
+        self.current_results_table.setColumnCount(6)
+        self.current_results_table.setHorizontalHeaderLabels(["IT1", "IT2", "IT3", "IT4", "IT5", "Average"])
+        self.current_results_table.setVerticalHeaderLabels(["Time"])
+        self.current_results_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.current_results_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.current_results_table.verticalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.current_results_table.setMaximumHeight(80) # Keep it compact
+        results_group_layout.addWidget(self.current_results_table)
+        results_group.setLayout(results_group_layout)
         details_layout.addWidget(results_group)
 
         self.tabs.addTab(details_tab, "Test Case Details")
@@ -282,8 +294,6 @@ class ExecutionDashboard(QWidget):
 
             self.test_case_progress_label.setText(f"Test Case: {index + 1} / {self.total_test_cases}")
             self.update_current_results_display()
-            # Reset the iteration count for the new test case
-            self.state.update_current_session('current_iteration', 1)
             self.reset_timer_and_iterations()
         else:
             QMessageBox.information(self, "End of List", "You have reached the end of the test cases for this sheet.")
@@ -303,41 +313,37 @@ class ExecutionDashboard(QWidget):
     def toggle_timer(self):
         if self.timer.isActive():
             self.timer.stop()
+            self.recorded_time = time.perf_counter() - self.start_time
             self.start_stop_btn.setText("Start (Space)")
             self.confirm_iteration_btn.setEnabled(True)
         else:
-            self.elapsed_time.setHMS(0, 0, 0, 0)
-            self.timer.start(10) # Update every 10ms for better precision
+            self.start_time = time.perf_counter()
+            self.timer.start(10) # Update display every 10ms
             self.start_stop_btn.setText("Stop (Space)")
             self.confirm_iteration_btn.setEnabled(False)
 
     def update_timer_display(self):
-        self.elapsed_time = self.elapsed_time.addMSecs(10)
-        self.timer_display.setText(self.elapsed_time.toString("mm:ss.zzz"))
+        elapsed = time.perf_counter() - self.start_time
+        minutes, seconds = divmod(elapsed, 60)
+        self.timer_display.setText(f"{int(minutes):02d}:{int(seconds):02d}.{int((seconds % 1) * 1000):03d}")
 
     def confirm_iteration(self):
         """Saves the current time and moves to the next iteration."""
-        current_iteration = self.state.get_current_iteration()
-        # Format to seconds with 3 decimal places
-        time_val = self.elapsed_time.msecsSinceStartOfDay() / 1000.0
+        if self.current_iteration > 5:
+            QMessageBox.information(self, "Completed", "All iterations for this test case are complete.")
+            return
 
         self.data_manager.save_iteration_time(
             self.state.get_active_sheet(),
             self.state.get_current_test_case_index(),
-            current_iteration,
-            time_val
+            self.current_iteration,
+            self.recorded_time
         )
 
-        if current_iteration < 5:
-            self.state.update_current_session('current_iteration', current_iteration + 1)
-        else:
-            # Last iteration, add N-Points to total and reset.
-            n_points = pd.to_numeric(self.current_test_case.get("N-Points", 0), errors='coerce')
-            if not pd.isna(n_points):
-                self.total_n_points += n_points
-                self.total_n_points_label.setText(f"<b>Total N-Points: {self.total_n_points}</b>")
-
-            self.state.update_current_session('current_iteration', 1)
+        # Check if all iterations are now complete to update N-Points
+        self.determine_next_iteration() # This will now set current_iteration to 6 if complete
+        if self.current_iteration > 5:
+            self.update_total_n_points()
 
         self.reset_timer_and_iterations()
         self.update_results_tab()
@@ -347,28 +353,45 @@ class ExecutionDashboard(QWidget):
         """Resets the timer and iteration UI elements."""
         if self.timer.isActive():
             self.timer.stop()
-        self.elapsed_time.setHMS(0, 0, 0, 0)
+        self.recorded_time = 0
+        self.start_time = 0
         self.timer_display.setText("00:00.000")
         self.start_stop_btn.setText("Start (Space)")
         self.confirm_iteration_btn.setEnabled(False)
+        self.determine_next_iteration() # This finds the next empty slot and updates indicators
+
+    def determine_next_iteration(self):
+        """
+        Determines the next available iteration slot for the current test case
+        and updates the UI indicators.
+        """
+        self.current_iteration = 6 # Default to completed
+        if self.current_test_case is not None:
+            for i in range(1, 6):
+                iter_value = self.current_test_case.get(f"Iteration{i}", "")
+                if pd.isna(iter_value) or str(iter_value).strip() == "":
+                    self.current_iteration = i
+                    break
         self.update_iteration_indicators()
 
     def update_iteration_indicators(self):
         """Updates the visual indicators for the current iteration."""
-        current_iter = self.state.get_current_iteration()
         for i, indicator in enumerate(self.iteration_indicators):
             # Iterations are 1-based, index is 0-based
-            indicator.set_active(i < current_iter - 1)
+            indicator.set_active(i < self.current_iteration - 1)
 
     def save_notes(self):
         """Saves the notes for the current test case."""
         if self.current_test_case is not None:
             notes = self.notes_input.toPlainText()
-            self.data_manager.save_notes(
+            updated_test_case = self.data_manager.save_notes(
                 self.state.get_active_sheet(),
                 self.state.get_current_test_case_index(),
                 notes
             )
+            # Refresh the local test case data to ensure consistency
+            if updated_test_case is not None:
+                self.current_test_case = updated_test_case
 
     def update_results_tab(self):
         """Refreshes the results table for the current sheet."""
@@ -444,35 +467,29 @@ class ExecutionDashboard(QWidget):
         self.total_n_points_label.setText(f"<b>Total N-Points: {self.total_n_points}</b>")
 
     def update_current_results_display(self):
-        """Updates the compact results view on the Test Case Details tab."""
-        # Clear previous results by taking them from the layout
-        while self.current_results_layout.count():
-            child = self.current_results_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
-
+        """Updates the compact results table on the Test Case Details tab."""
         if self.current_test_case is None:
             return
+
+        # Disconnect signal to prevent edit triggers while populating
+        self.current_results_table.blockSignals(True)
 
         for i in range(1, 6):
             iter_value = self.current_test_case.get(f"Iteration{i}", "")
             if isinstance(iter_value, float):
                 iter_value = f"{iter_value:.3f}"
-
-            result_label = QLabel(f"<b>IT{i}:</b> {iter_value}")
-            result_label.setFrameStyle(QFrame.StyledPanel | QFrame.Sunken)
-            result_label.setMinimumWidth(80)
-            self.current_results_layout.addWidget(result_label)
+            self.current_results_table.setItem(0, i - 1, QTableWidgetItem(str(iter_value)))
 
         avg_value = self.current_test_case.get("Average", "")
         if isinstance(avg_value, float):
             avg_value = f"{avg_value:.3f}"
-        avg_label = QLabel(f"<b>AVG:</b> {avg_value}")
-        avg_label.setFrameStyle(QFrame.StyledPanel | QFrame.Sunken)
-        avg_label.setStyleSheet("background-color: #E0E0E0;")
-        self.current_results_layout.addWidget(avg_label)
 
-        self.current_results_layout.addStretch()
+        avg_item = QTableWidgetItem(str(avg_value))
+        avg_item.setFont(QFont("Arial", 10, QFont.Bold))
+        self.current_results_table.setItem(0, 5, avg_item)
+
+        # Reconnect signal
+        self.current_results_table.blockSignals(False)
 
     def keyPressEvent(self, event):
         """Handle keyboard shortcuts."""
