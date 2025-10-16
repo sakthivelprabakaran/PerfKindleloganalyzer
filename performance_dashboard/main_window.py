@@ -29,15 +29,6 @@ class MainWindow(QWidget):
         self.execution_dashboard = None  # Created when needed
 
         self.stacked_widget.addWidget(self.launcher_screen)
-        self.load_styles()
-
-    def load_styles(self):
-        """Loads the application's stylesheet."""
-        # Simple style switching for now, can be enhanced with a toggle
-        light_mode_path = "performance_dashboard/assets/light_mode.qss"
-        if os.path.exists(light_mode_path):
-            with open(light_mode_path, "r") as f:
-                self.setStyleSheet(f.read())
 
     def switch_to_dashboard(self, session_data):
         """Switches the view to the Execution Dashboard for the given session."""

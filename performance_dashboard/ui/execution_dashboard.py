@@ -253,10 +253,8 @@ class ExecutionDashboard(QWidget):
             return
 
         session_name = self.state.current_session.get('file_name', 'N/A')
-        self.session_info_label.setText(f"<b>Session:</b> {session_name}")
-
         active_sheet = self.state.get_active_sheet()
-        self.priority_label.setText(f"<b>Priority Sheet:</b> {active_sheet}")
+        self.session_info_label.setText(f"<b>Session:</b> {session_name} ({active_sheet})")
 
         self.total_test_cases = self.data_manager.get_test_case_count(active_sheet)
         self.update_total_n_points() # Calculate initial N-Points
