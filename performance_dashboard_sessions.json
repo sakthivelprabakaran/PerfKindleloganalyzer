@@ -8,5 +8,25 @@
         "file_name": "P0_Restored-Device_Week_1.xlsx",
         "status": "Completed",
         "current_test_case_index": 0
+    },
+    {
+        "project_path": "/Users/sakthivelprabakaran/Documents/SAMPLE_WEEK",
+        "device_name": "SCRIEB",
+        "week": "1",
+        "build_details": "J18.1",
+        "priority": "P0",
+        "file_name": "P0_SCRIEB_Week_1.xlsx",
+        "status": "Completed",
+        "current_test_case_index": 0
+    },
+    {
+        "project_path": "/Users/sakthivelprabakaran/Documents/SAMPLE_WEEK",
+        "device_name": "Device one",
+        "week": "1",
+        "build_details": "18.1",
+        "priority": "P0",
+        "file_name": "P0_Device one_Week_1.xlsx",
+        "status": "Completed",
+        "current_test_case_index": 1
     }
 ]
