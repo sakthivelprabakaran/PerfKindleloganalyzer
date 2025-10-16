@@ -524,7 +524,7 @@ class FinalKindleLogAnalyzer(QWidget):
 
         # Start/Stop info
         times_label = QLabel(f"🔢 {result['start']} → {result['stop']}")
-        times_label.setStyleSheet("font-family: monospace; font-size: 11px;")
+        times_label.setObjectName("monospaceLabel")
         layout.addWidget(times_label)
 
         # All heights and waveforms
