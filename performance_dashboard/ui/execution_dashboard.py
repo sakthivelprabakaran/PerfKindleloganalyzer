@@ -3,10 +3,53 @@ import pandas as pd
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QGroupBox, QLabel, QPushButton,
     QTextEdit, QTableWidget, QTabWidget, QSplitter,
-    QTableWidgetItem, QHeaderView, QMessageBox, QFrame
+    QTableWidgetItem, QHeaderView, QMessageBox, QFrame,
+    QListWidget, QFileDialog, QLineEdit, QDialog, QDialogButtonBox
 )
 from PyQt5.QtGui import QPainter, QFont
 from PyQt5.QtCore import Qt, QTimer, QTime
+
+from logic.data_manager import DataManager
+
+class NewSessionDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Create New Session")
+        layout = QVBoxLayout(self)
+
+        self.project_path_le = QLineEdit()
+        self.project_path_le.setPlaceholderText("Select Project Folder")
+        self.file_name_le = QLineEdit()
+        self.file_name_le.setPlaceholderText("Enter Session File Name (e.g., my_session.xlsx)")
+
+        browse_btn = QPushButton("Browse...")
+        browse_btn.clicked.connect(self.browse_folder)
+
+        form_layout = QVBoxLayout()
+        form_layout.addWidget(QLabel("Project Folder:"))
+        path_layout = QHBoxLayout()
+        path_layout.addWidget(self.project_path_le)
+        path_layout.addWidget(browse_btn)
+        form_layout.addLayout(path_layout)
+        form_layout.addWidget(QLabel("Session File Name:"))
+        form_layout.addWidget(self.file_name_le)
+        layout.addLayout(form_layout)
+
+        self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+        layout.addWidget(self.button_box)
+
+    def browse_folder(self):
+        folder = QFileDialog.getExistingDirectory(self, "Select Project Folder")
+        if folder:
+            self.project_path_le.setText(folder)
+
+    def get_data(self):
+        return {
+            "project_path": self.project_path_le.text(),
+            "file_name": self.file_name_le.text()
+        }
 
 class CircleIndicator(QWidget):
     """A simple circular widget to indicate progress."""
@@ -40,11 +83,11 @@ class ExecutionDashboard(QWidget):
     """
     The main dashboard for test case execution, timing, and data entry.
     """
-    def __init__(self, state_manager, data_manager, return_to_launcher_callback):
+    def __init__(self, state_manager, notification_manager=None):
         super().__init__()
         self.state = state_manager
-        self.data_manager = data_manager
-        self.return_to_launcher = return_to_launcher_callback
+        self.notification_manager = notification_manager
+        self.data_manager = None
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_timer_display)
@@ -66,18 +109,97 @@ class ExecutionDashboard(QWidget):
         main_layout = QVBoxLayout(self)
 
         # Main splitter for the two panels
-        main_splitter = QSplitter(Qt.Horizontal)
-        main_layout.addWidget(main_splitter, 1)
+        self.main_splitter = QSplitter(Qt.Horizontal)
+        main_layout.addWidget(self.main_splitter, 1)
 
-        # Left panel
+        # Create the empty state view
+        self.create_empty_state_view()
+
+        # Initially, the main dashboard is hidden
+        self.main_splitter.setVisible(False)
+
+    def create_empty_state_view(self):
+        """Creates the view shown when no session is active."""
+        self.empty_state_widget = QWidget()
+        layout = QVBoxLayout(self.empty_state_widget)
+        layout.setAlignment(Qt.AlignCenter)
+
+        title = QLabel("Performance Execution Dashboard")
+        title.setFont(QFont("Arial", 24, QFont.Bold))
+        layout.addWidget(title, alignment=Qt.AlignCenter)
+
+        self.session_list = QListWidget()
+        self.session_list.itemDoubleClicked.connect(self.open_selected_session)
+        layout.addWidget(self.session_list)
+
+        btn_layout = QHBoxLayout()
+        new_session_btn = QPushButton("🚀 Start New Session")
+        new_session_btn.clicked.connect(self.create_new_session)
+        open_selected_btn = QPushButton("📂 Open Selected")
+        open_selected_btn.clicked.connect(self.open_selected_session)
+        btn_layout.addWidget(new_session_btn)
+        btn_layout.addWidget(open_selected_btn)
+        layout.addLayout(btn_layout)
+
+        self.layout().addWidget(self.empty_state_widget)
+        self.refresh_session_list()
+
+    def refresh_session_list(self):
+        """Reloads the list of recent sessions."""
+        self.session_list.clear()
+        sessions = self.state.get_recent_sessions()
+        for session in sessions:
+            # Display format: "Session Name (Project Path)"
+            display_text = f"{session.get('file_name')} ({session.get('project_path')})"
+            self.session_list.addItem(display_text)
+
+    def create_new_session(self):
+        """Opens a dialog to create a new session."""
+        dialog = NewSessionDialog(self)
+        if dialog.exec_():
+            session_data = dialog.get_data()
+            if not session_data['project_path'] or not session_data['file_name']:
+                QMessageBox.warning(self, "Input Error", "Both project path and file name are required.")
+                return
+            self.start_session(session_data)
+
+    def open_selected_session(self):
+        """Opens the session selected from the list."""
+        selected_item = self.session_list.currentItem()
+        if not selected_item:
+            QMessageBox.warning(self, "Selection Error", "Please select a session to open.")
+            return
+
+        # The session data is stored in the state, find it by matching the display text
+        sessions = self.state.get_recent_sessions()
+        selected_text = selected_item.text()
+        session_data = next((s for s in sessions if f"{s.get('file_name')} ({s.get('project_path')})" == selected_text), None)
+
+        if session_data:
+            self.start_session(session_data)
+
+    def start_session(self, session_data):
+        """Initializes the main dashboard for the given session."""
+        if not os.path.exists(os.path.join(session_data['project_path'], session_data['file_name'])):
+            success, message = DataManager.create_session_file(session_data)
+            if not success:
+                QMessageBox.critical(self, "File Creation Error", message)
+                return
+
+        self.data_manager = DataManager(session_data)
+        self.state.add_recent_session(session_data)
+
+        # Create and show the main dashboard UI
         left_panel = self.create_left_panel()
-
-        # Right panel
         right_panel = self.create_right_panel()
+        self.main_splitter.addWidget(left_panel)
+        self.main_splitter.addWidget(right_panel)
+        self.main_splitter.setSizes([400, 1200])
 
-        main_splitter.addWidget(left_panel)
-        main_splitter.addWidget(right_panel)
-        main_splitter.setSizes([400, 1200])
+        self.empty_state_widget.setVisible(False)
+        self.main_splitter.setVisible(True)
+
+        self.load_session_data()
 
     def create_left_panel(self):
         """Creates the left panel for timer controls and navigation."""
@@ -157,10 +279,10 @@ class ExecutionDashboard(QWidget):
 
         layout.addStretch()
 
-        # Save and Return Button
-        save_return_btn = QPushButton("💾 Save & Return to Launcher")
-        save_return_btn.clicked.connect(self.save_and_return)
-        layout.addWidget(save_return_btn)
+        # Save Button
+        save_btn = QPushButton("💾 Save Session")
+        save_btn.clicked.connect(self.save_session_data)
+        layout.addWidget(save_btn)
 
         return panel
 
@@ -382,8 +504,11 @@ class ExecutionDashboard(QWidget):
             # Refresh the local test case data and provide user feedback
             if updated_test_case is not None:
                 self.current_test_case = updated_test_case
-                self.add_note_btn.setText("Note Saved!")
-                self.note_button_timer.start(2000) # Reset text after 2 seconds
+                if self.notification_manager:
+                    self.notification_manager.show_message("Note saved!", "success")
+                else:
+                    self.add_note_btn.setText("Note Saved!")
+                    self.note_button_timer.start(2000) # Reset text after 2 seconds
 
     def update_results_tab(self):
         """Refreshes the results table for the current sheet."""
@@ -414,12 +539,21 @@ class ExecutionDashboard(QWidget):
             self.results_table.resizeColumnsToContents()
             self.results_table.blockSignals(False)
 
-    def save_and_return(self):
-        """Saves final state and returns to the launcher screen."""
-        self.note_button_timer.stop() # Stop the timer to prevent crash
-        # self.save_notes() # No longer needed as it's explicit
-        self.state.update_current_session('status', 'Completed') # Or some other status
-        self.return_to_launcher()
+    def save_session_data(self):
+        """Saves the current session state."""
+        self.note_button_timer.stop()
+        self.state.update_current_session('status', 'In Progress')
+        success, message = self.data_manager.save_to_excel()
+        if success:
+            if self.notification_manager:
+                self.notification_manager.show_message(message, "success")
+            else:
+                QMessageBox.information(self, "Success", message)
+        else:
+            if self.notification_manager:
+                self.notification_manager.show_message(message, "warning")
+            else:
+                QMessageBox.warning(self, "Save Error", message)
 
     def manual_result_edit(self, item):
         """Handles manual editing of iteration values in the results table."""

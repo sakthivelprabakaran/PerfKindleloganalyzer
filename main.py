@@ -1,12 +1,12 @@
 import sys
 import os
-from PyQt5.QtWidgets import QApplication, QMainWindow, QStackedWidget, QCheckBox
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from PyQt5.QtWidgets import QApplication, QMainWindow, QTabWidget, QAction
 from PyQt5.QtGui import QFont, QIcon
-from PyQt5.QtCore import Qt
 
-from ui.universal_launcher import UniversalLauncher
 from ui.main_window import FinalKindleLogAnalyzer
 from performance_dashboard.main_window import MainWindow as PerformanceDashboard
+from utils.notification_manager import NotificationManager
 
 class ApplicationContainer(QMainWindow):
     """
@@ -20,41 +20,36 @@ class ApplicationContainer(QMainWindow):
         self.set_app_icon()
         self.dark_mode = False
 
-        self.stacked_widget = QStackedWidget()
-        self.setCentralWidget(self.stacked_widget)
+        # Create the tab widget
+        self.tab_widget = QTabWidget()
+        self.setCentralWidget(self.tab_widget)
 
-        # Instantiate all the applications/screens
-        self.universal_launcher = UniversalLauncher(
-            self.launch_log_analyzer,
-            self.launch_exec_dashboard,
-            self.toggle_dark_mode
-        )
-        self.log_analyzer = FinalKindleLogAnalyzer(back_to_launcher_callback=self.back_to_launcher)
-        self.exec_dashboard = PerformanceDashboard(back_to_launcher_callback=self.back_to_launcher)
+        # Create the notification manager
+        self.notification_manager = NotificationManager(self)
 
-        # Add them to the stack
-        self.stacked_widget.addWidget(self.universal_launcher)
-        self.stacked_widget.addWidget(self.log_analyzer)
-        self.stacked_widget.addWidget(self.exec_dashboard)
+        # Instantiate the tools
+        self.log_analyzer = FinalKindleLogAnalyzer(notification_manager=self.notification_manager)
+        self.exec_dashboard = PerformanceDashboard(notification_manager=self.notification_manager)
 
-        # Set the initial screen
-        self.stacked_widget.setCurrentWidget(self.universal_launcher)
+        # Add tools as tabs
+        self.tab_widget.addTab(self.log_analyzer, "Kindle Log Analyzer")
+        self.tab_widget.addTab(self.exec_dashboard, "Performance Dashboard")
+
+        # Create the menu bar
+        self.create_menu_bar()
+
+        # Load the initial stylesheet
         self.load_stylesheet()
 
-    def launch_log_analyzer(self):
-        """Switches the view to the Kindle Log Analyzer."""
-        self.setWindowTitle("Final Kindle Log Analyzer")
-        self.stacked_widget.setCurrentWidget(self.log_analyzer)
+    def create_menu_bar(self):
+        """Creates the main menu bar for the application."""
+        menu_bar = self.menuBar()
+        view_menu = menu_bar.addMenu("View")
 
-    def launch_exec_dashboard(self):
-        """Switches the view to the Performance Execution Dashboard."""
-        self.setWindowTitle("Performance Execution Dashboard")
-        self.stacked_widget.setCurrentWidget(self.exec_dashboard)
-
-    def back_to_launcher(self):
-        """Switches the view back to the universal launcher."""
-        self.setWindowTitle("Kindle Test Engineering Tools")
-        self.stacked_widget.setCurrentWidget(self.universal_launcher)
+        # Dark mode toggle action
+        dark_mode_action = QAction("Dark Mode", self, checkable=True)
+        dark_mode_action.triggered.connect(self.toggle_dark_mode)
+        view_menu.addAction(dark_mode_action)
 
     def toggle_dark_mode(self, checked):
         """Toggles the application's theme."""

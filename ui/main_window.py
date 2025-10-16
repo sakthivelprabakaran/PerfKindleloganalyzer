@@ -27,10 +27,10 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 
 
-class FinalKindleLogAnalyzer(QMainWindow):
-    def __init__(self, back_to_launcher_callback=None):
+class FinalKindleLogAnalyzer(QWidget):
+    def __init__(self, notification_manager=None):
         super().__init__()
-        self.back_to_launcher_callback = back_to_launcher_callback
+        self.notification_manager = notification_manager
         self.state = StateManager()
         self.comparison_result_a = None
         self.comparison_result_b = None
@@ -42,13 +42,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         self.load_session()
 
     def setup_ui(self):
-        self.setWindowTitle("Final Kindle Log Analyzer - PDF Export & Waveform Boxes")
-        self.setGeometry(50, 50, 1600, 1000)
-
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-
-        main_layout = QHBoxLayout(central_widget)
+        main_layout = QHBoxLayout(self)
 
         # Create main splitter
         main_splitter = QSplitter(Qt.Horizontal)
@@ -64,6 +58,8 @@ class FinalKindleLogAnalyzer(QMainWindow):
         main_splitter.setSizes([400, 1200])
 
         main_layout.addWidget(main_splitter)
+
+        self.on_processing_mode_changed(self.processing_mode.currentText())
 
     def create_enhanced_left_panel(self):
         """Enhanced left panel with all requested features"""
@@ -169,7 +165,6 @@ class FinalKindleLogAnalyzer(QMainWindow):
         batch_layout.addWidget(self.process_batch_btn)
 
         self.batch_group.setLayout(batch_layout)
-        self.batch_group.setVisible(False)
         layout.addWidget(self.batch_group)
 
         # Progress section
@@ -228,11 +223,6 @@ class FinalKindleLogAnalyzer(QMainWindow):
         layout.addWidget(export_group)
 
         layout.addStretch()
-
-        if self.back_to_launcher_callback:
-            back_btn = QPushButton("⬅️ Back to Launcher")
-            back_btn.clicked.connect(self.back_to_launcher_callback)
-            layout.addWidget(back_btn)
 
         panel.setLayout(layout)
         return panel
@@ -745,7 +735,10 @@ class FinalKindleLogAnalyzer(QMainWindow):
                 logging.error(f"TXT Export Error: {message}")
 
         if not error_messages:
-            QMessageBox.information(self, "Success", f"Successfully exported {success_count} report(s).")
+            if self.notification_manager:
+                self.notification_manager.show_message(f"Successfully exported {success_count} report(s).", "success")
+            else:
+                QMessageBox.information(self, "Success", f"Successfully exported {success_count} report(s).")
         else:
             QMessageBox.critical(self, "Export Error", "\n".join(error_messages))
 
