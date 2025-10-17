@@ -1,5 +1,20 @@
 import json
 import os
+import numpy as np
+
+class NumpyJSONEncoder(json.JSONEncoder):
+    """
+    A custom JSON encoder to handle NumPy data types, which are not
+    natively serializable by the default JSON library.
+    """
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NumpyJSONEncoder, self).default(obj)
 
 class StateManager:
     """Manages the state of the Performance Execution Dashboard."""
@@ -20,10 +35,10 @@ class StateManager:
                 self.sessions = []
 
     def save_sessions(self):
-        """Saves the list of sessions to a JSON file."""
+        """Saves the current sessions list to the JSON file using the custom encoder."""
         try:
             with open(self.session_file_path, 'w') as f:
-                json.dump(self.sessions, f, indent=4)
+                json.dump(self.sessions, f, indent=4, cls=NumpyJSONEncoder)
         except IOError as e:
             print(f"Error saving sessions: {e}")
 

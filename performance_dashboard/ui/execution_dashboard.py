@@ -330,6 +330,9 @@ class ExecutionDashboard(QWidget):
         if self.current_test_case is not None:
             self.save_current_test_case_data()
 
+        # Ensure the index is a standard Python int before saving to JSON state
+        index = int(index)
+
         active_sheet = self.state.get_active_sheet()
         self.current_test_case = self.data_manager.get_test_case(active_sheet, index)
 
