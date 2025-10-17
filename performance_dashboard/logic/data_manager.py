@@ -29,20 +29,6 @@ class DataManager:
         except IOError as e:
             return False, f"Error creating session file: {e}"
 
-    @staticmethod
-    def get_template_sheet_names():
-        """Reads the master template and returns a list of its sheet names (priorities)."""
-        template_path = "performance_dashboard/assets/template_test_cases.xlsx"
-        try:
-            xls = pd.ExcelFile(template_path)
-            return xls.sheet_names
-        except FileNotFoundError:
-            print(f"Error: Master template not found at {template_path}")
-            return []
-        except Exception as e:
-            print(f"Error reading template file: {e}")
-            return []
-
     def load_data(self):
         """Loads all sheets from the Excel file into an in-memory workbook."""
         try:
@@ -99,7 +85,7 @@ class DataManager:
             return None
 
     def save_notes(self, sheet_name, test_case_index, notes):
-        """Saves notes for a specific test case to the in-memory DataFrame and Excel."""
+        """Saves notes for a specific test case to the in-memory DataFrame."""
         try:
             df = self.get_sheet_data(sheet_name)
             if df.empty:
@@ -112,21 +98,18 @@ class DataManager:
             print(f"Error saving notes to in-memory DataFrame: {e}")
             return None
 
-    def save_to_excel(self, silent=False):
-        """
-        Writes the entire in-memory workbook back to the Excel file.
-        Returns a tuple (success, message).
-        """
+    def save_to_excel(self):
+        """Writes the entire in-memory workbook back to the Excel file."""
         if not self.workbook:
+            print("Error: No workbook data to save.")
             return False, "No data to save."
         try:
             with pd.ExcelWriter(self.file_path, engine='openpyxl') as writer:
                 for sheet_name, df in self.workbook.items():
                     df.to_excel(writer, sheet_name=sheet_name, index=False)
-
-            message = "Session saved successfully." if not silent else ""
-            return True, message
+            return True, "Session saved successfully."
         except Exception as e:
+            print(f"Error writing to Excel file: {e}")
             return False, f"Failed to save session: {e}"
 
     def get_all_results(self, sheet_name):
@@ -144,23 +127,3 @@ class DataManager:
 
             return sheet_data[results_columns].fillna('')
         return pd.DataFrame()
-
-    def get_unique_components(self, sheet_name):
-        """Returns a sorted list of unique values from the 'Component' column."""
-        sheet_data = self.get_sheet_data(sheet_name)
-        if sheet_data is not None and "Component" in sheet_data.columns:
-            return sorted(sheet_data["Component"].unique().tolist())
-        return []
-
-    def get_all_test_case_identifiers(self, sheet_name):
-        """
-        Returns a list of strings formatted as 'ID: Name' for all test cases.
-        """
-        sheet_data = self.get_sheet_data(sheet_name)
-        if sheet_data is not None and "Test Case ID" in sheet_data.columns and "Test Case Name" in sheet_data.columns:
-            # Combine ID and Name into a single string for the search dropdown
-            return [
-                f"{row['Test Case ID']}: {row['Test Case Name']}"
-                for index, row in sheet_data.iterrows()
-            ]
-        return []

@@ -1,12 +1,9 @@
-import os
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QGroupBox, QLabel, QLineEdit,
     QComboBox, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView,
     QFileDialog, QMessageBox
 )
-from PyQt5.QtGui import QColor
 from PyQt5.QtCore import Qt
-from ..logic.data_manager import DataManager
 
 class LauncherScreen(QWidget):
     """
@@ -72,12 +69,7 @@ class LauncherScreen(QWidget):
         # Priority
         layout.addWidget(QLabel("Priority:"))
         self.priority_combo = QComboBox()
-        priorities = DataManager.get_template_sheet_names()
-        if priorities:
-            self.priority_combo.addItems(priorities)
-        else:
-            self.priority_combo.addItem("ERROR: Template not found")
-            self.priority_combo.setEnabled(False)
+        self.priority_combo.addItems(["P0", "P1", "P2", "P3", "750", "HWR", "GEN AI"])
         layout.addWidget(self.priority_combo)
 
         layout.addStretch()
@@ -139,39 +131,18 @@ class LauncherScreen(QWidget):
             self.project_path_input.setText(path)
 
     def load_session_table(self):
-        """
-        Populates the session table and checks the status of the session file.
-        """
+        """Populates the session table with data from the state manager."""
         self.state.load_sessions()
-        self.session_table.setRowCount(0)  # Clear the table first
-
+        self.session_table.setRowCount(0) # Clear the table first
         for session in self.state.sessions:
             row_position = self.session_table.rowCount()
             self.session_table.insertRow(row_position)
-
-            # Check file status
-            file_path = os.path.join(session.get("project_path", ""), session.get("file_name", ""))
-            status = "Available"
-            color = QColor("white")
-            if not os.path.exists(file_path):
-                status = "Missing"
-                color = QColor("#FFCCCC")  # Light red
-
-            # Populate cells
-            items = [
-                session.get("device_name", ""),
-                str(session.get("week", "")),
-                session.get("build_details", ""),
-                session.get("priority", ""),
-                session.get("file_name", ""),
-                status
-            ]
-
-            for col, text in enumerate(items):
-                item = QTableWidgetItem(text)
-                item.setBackground(color)
-                self.session_table.setItem(row_position, col, item)
-
+            self.session_table.setItem(row_position, 0, QTableWidgetItem(session.get("device_name", "")))
+            self.session_table.setItem(row_position, 1, QTableWidgetItem(str(session.get("week", ""))))
+            self.session_table.setItem(row_position, 2, QTableWidgetItem(session.get("build_details", "")))
+            self.session_table.setItem(row_position, 3, QTableWidgetItem(session.get("priority", "")))
+            self.session_table.setItem(row_position, 4, QTableWidgetItem(session.get("file_name", "")))
+            self.session_table.setItem(row_position, 5, QTableWidgetItem(session.get("status", "")))
         self.session_table.resizeColumnsToContents()
 
     def start_new_session(self):

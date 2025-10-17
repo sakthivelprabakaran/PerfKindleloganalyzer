@@ -1,21 +1,5 @@
 import json
 import os
-import numpy as np
-import shutil
-
-class NumpyJSONEncoder(json.JSONEncoder):
-    """
-    A custom JSON encoder to handle NumPy data types, which are not
-    natively serializable by the default JSON library.
-    """
-    def default(self, obj):
-        if isinstance(obj, np.integer):
-            return int(obj)
-        elif isinstance(obj, np.floating):
-            return float(obj)
-        elif isinstance(obj, np.ndarray):
-            return obj.tolist()
-        return super(NumpyJSONEncoder, self).default(obj)
 
 class StateManager:
     """Manages the state of the Performance Execution Dashboard."""
@@ -26,35 +10,20 @@ class StateManager:
         self.load_sessions()
 
     def load_sessions(self):
-        """
-        Loads the list of saved sessions from a JSON file.
-        If the file is corrupted, it backs it up and starts fresh.
-        """
+        """Loads the list of saved sessions from a JSON file."""
         if os.path.exists(self.session_file_path):
             try:
                 with open(self.session_file_path, 'r') as f:
-                    # If the file is empty, json.load will raise an error
-                    if os.path.getsize(self.session_file_path) == 0:
-                        self.sessions = []
-                        return
                     self.sessions = json.load(f)
-            except json.JSONDecodeError as e:
-                print(f"Error decoding session file: {e}. Backing up corrupted file.")
-                try:
-                    shutil.copy(self.session_file_path, f"{self.session_file_path}.bak")
-                    os.remove(self.session_file_path) # Start with a fresh file
-                except IOError as backup_e:
-                    print(f"Could not back up corrupted file: {backup_e}")
-                self.sessions = []
-            except IOError as e:
-                print(f"Error reading session file: {e}")
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"Error loading sessions: {e}")
                 self.sessions = []
 
     def save_sessions(self):
-        """Saves the current sessions list to the JSON file using the custom encoder."""
+        """Saves the list of sessions to a JSON file."""
         try:
             with open(self.session_file_path, 'w') as f:
-                json.dump(self.sessions, f, indent=4, cls=NumpyJSONEncoder)
+                json.dump(self.sessions, f, indent=4)
         except IOError as e:
             print(f"Error saving sessions: {e}")
 
@@ -94,8 +63,7 @@ class StateManager:
         return self.current_session.get('current_test_case_index', 0) if self.current_session else 0
 
     def get_active_sheet(self):
-        """Returns the 'priority' which is used as the sheet name for the current session."""
-        return self.current_session.get('priority', 'P0') if self.current_session else 'P0'
+        return self.current_session.get('active_sheet', 'P0') if self.current_session else 'P0'
 
     def get_session_by_filename(self, filename):
         """Finds and returns a session from the list by its filename."""

@@ -62,9 +62,7 @@ class MainWindow(QWidget):
         if self.data_manager:
             success, message = self.data_manager.save_to_excel()
             if success:
-                # Optionally, show a success message, or just log it.
-                # For now, we'll keep it silent unless there's an error.
-                pass
+                QMessageBox.information(self, "Success", message)
             else:
                 QMessageBox.warning(self, "Save Error", message)
 
