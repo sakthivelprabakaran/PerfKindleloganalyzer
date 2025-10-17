@@ -3,7 +3,7 @@ import pandas as pd
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QGroupBox, QLabel, QPushButton,
     QTextEdit, QTableWidget, QTabWidget, QSplitter,
-    QTableWidgetItem, QHeaderView, QMessageBox, QFrame
+    QTableWidgetItem, QHeaderView, QMessageBox, QFrame, QLineEdit
 )
 from PyQt5.QtGui import QPainter, QFont
 from PyQt5.QtCore import Qt, QTimer, QTime
