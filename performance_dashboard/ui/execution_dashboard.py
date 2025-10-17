@@ -1,12 +1,14 @@
 import time
 import pandas as pd
+import time
+import pandas as pd
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QGroupBox, QLabel, QPushButton,
-    QTextEdit, QTableWidget, QTabWidget, QSplitter,
-    QTableWidgetItem, QHeaderView, QMessageBox, QFrame
+    QTextEdit, QTableWidget, QTabWidget, QSplitter, QTableWidgetItem,
+    QHeaderView, QMessageBox, QFrame, QLineEdit, QCompleter
 )
 from PyQt5.QtGui import QPainter, QFont
-from PyQt5.QtCore import Qt, QTimer, QTime
+from PyQt5.QtCore import Qt, QTimer, QTime, QStringListModel
 
 class CircleIndicator(QWidget):
     """A simple circular widget to indicate progress."""
@@ -58,6 +60,9 @@ class ExecutionDashboard(QWidget):
         self.current_test_case = None
         self.total_test_cases = 0
         self.total_n_points = 0
+
+        self.filtered_indices = []  # To store the original indices of filtered test cases
+        self.current_filtered_index = 0 # To track position within the filtered list
 
         self.init_ui()
 
@@ -142,6 +147,37 @@ class ExecutionDashboard(QWidget):
         nav_layout.addWidget(self.test_case_progress_label)
         nav_group.setLayout(nav_layout)
         layout.addWidget(nav_group)
+
+        # Advanced Navigation
+        adv_nav_group = QGroupBox("🔎 Advanced Navigation")
+        adv_nav_layout = QVBoxLayout()
+
+        # Filter by Functional Area
+        adv_nav_layout.addWidget(QLabel("Filter by Functional Area:"))
+        self.area_filter_combo = QComboBox()
+        self.area_filter_combo.addItem("All Areas")
+        adv_nav_layout.addWidget(self.area_filter_combo)
+
+        # Search by Test Case Name/ID
+        adv_nav_layout.addWidget(QLabel("Search by Test Case Name/ID:"))
+        self.search_combo = QComboBox()
+        self.search_combo.setEditable(True)
+        self.search_combo.setInsertPolicy(QComboBox.NoInsert)
+        self.search_combo.setPlaceholderText("Type to search...")
+        adv_nav_layout.addWidget(self.search_combo)
+
+        # Jump to Test Case Number
+        jump_layout = QHBoxLayout()
+        self.jump_to_input = QLineEdit()
+        self.jump_to_input.setPlaceholderText("Go to #")
+        jump_btn = QPushButton("Jump")
+        jump_btn.setObjectName("jump_btn") # Set object name for later lookup
+        jump_layout.addWidget(self.jump_to_input)
+        jump_layout.addWidget(jump_btn)
+        adv_nav_layout.addLayout(jump_layout)
+
+        adv_nav_group.setLayout(adv_nav_layout)
+        layout.addWidget(adv_nav_group)
 
         # Notes Section
         notes_group = QGroupBox("📝 Notes")
@@ -258,11 +294,23 @@ class ExecutionDashboard(QWidget):
 
         self.total_test_cases = self.data_manager.get_test_case_count(active_sheet)
         self.update_total_n_points() # Calculate initial N-Points
-        self.load_test_case_by_index(self.state.get_current_test_case_index())
+
+        # Populate advanced navigation widgets
+        self.populate_advanced_nav(active_sheet)
+
+        # Connect signals
+        jump_btn = self.findChild(QPushButton, "jump_btn") # Find the button to connect it
+        if jump_btn:
+            jump_btn.clicked.connect(self.jump_to_test_case)
+        self.area_filter_combo.currentIndexChanged.connect(self.filter_by_area)
+        self.search_combo.activated.connect(self.search_test_case)
+
+        # Initial load
+        self.apply_filters()
         self.update_results_tab()
 
     def load_test_case_by_index(self, index):
-        """Loads a specific test case into the UI."""
+        """Loads a specific test case into the UI by its original DataFrame index."""
         active_sheet = self.state.get_active_sheet()
         self.current_test_case = self.data_manager.get_test_case(active_sheet, index)
 
@@ -276,23 +324,24 @@ class ExecutionDashboard(QWidget):
             self.tc_steps_text.setText(str(self.current_test_case.get("Test Steps", "")))
             self.notes_input.setText(str(self.current_test_case.get("Notes", "")))
 
-            self.test_case_progress_label.setText(f"Test Case: {index + 1} / {self.total_test_cases}")
+            # Update progress label to reflect position in the filtered list
+            self.test_case_progress_label.setText(f"Test Case: {self.current_filtered_index + 1} / {len(self.filtered_indices)}")
             self.update_current_results_display()
             self.reset_timer_and_iterations()
         else:
             QMessageBox.information(self, "End of List", "You have reached the end of the test cases for this sheet.")
 
     def navigate_next(self):
-        current_index = self.state.get_current_test_case_index()
-        if current_index + 1 < self.total_test_cases:
-            # Notes are now saved explicitly via the "Add Note" button
-            self.load_test_case_by_index(current_index + 1)
+        """Navigates to the next test case in the filtered list."""
+        if self.current_filtered_index + 1 < len(self.filtered_indices):
+            self.current_filtered_index += 1
+            self.load_test_case_by_index(self.filtered_indices[self.current_filtered_index])
 
     def navigate_previous(self):
-        current_index = self.state.get_current_test_case_index()
-        if current_index > 0:
-            # Notes are now saved explicitly via the "Add Note" button
-            self.load_test_case_by_index(current_index - 1)
+        """Navigates to the previous test case in the filtered list."""
+        if self.current_filtered_index > 0:
+            self.current_filtered_index -= 1
+            self.load_test_case_by_index(self.filtered_indices[self.current_filtered_index])
 
     def toggle_timer(self):
         if self.timer.isActive():
@@ -415,9 +464,8 @@ class ExecutionDashboard(QWidget):
             self.results_table.blockSignals(False)
 
     def save_and_return(self):
-        """Saves final state and returns to the launcher screen."""
+        """Returns to the launcher screen. Saving is now handled in real-time."""
         self.note_button_timer.stop() # Stop the timer to prevent crash
-        # self.save_notes() # No longer needed as it's explicit
         self.state.update_current_session('status', 'Completed') # Or some other status
         self.return_to_launcher()
 
@@ -502,3 +550,86 @@ class ExecutionDashboard(QWidget):
             self.navigate_next()
         else:
             super().keyPressEvent(event)
+
+    def populate_advanced_nav(self, sheet_name):
+        """Populates the filter and search dropdowns with data from the current sheet."""
+        # Functional Area Filter
+        self.area_filter_combo.blockSignals(True)
+        self.area_filter_combo.clear()
+        self.area_filter_combo.addItem("All Areas")
+        areas = self.data_manager.get_unique_functional_areas(sheet_name)
+        self.area_filter_combo.addItems(areas)
+        self.area_filter_combo.blockSignals(False)
+
+        # Searchable Test Case list
+        self.search_combo.blockSignals(True)
+        self.search_combo.clear()
+        identifiers = self.data_manager.get_all_test_case_identifiers(sheet_name)
+        self.search_model = QStringListModel(identifiers)
+        self.search_completer = QCompleter(self.search_model, self)
+        self.search_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.search_combo.setCompleter(self.search_completer)
+        self.search_combo.addItems(identifiers)
+        self.search_combo.setCurrentIndex(-1) # Start with no selection
+        self.search_combo.blockSignals(False)
+
+    def apply_filters(self, selected_index=0):
+        """
+        Applies the selected filters to determine the list of visible test cases.
+        """
+        active_sheet = self.state.get_active_sheet()
+        all_test_cases = self.data_manager.get_sheet_data(active_sheet)
+
+        selected_area = self.area_filter_combo.currentText()
+
+        if selected_area == "All Areas":
+            self.filtered_indices = list(all_test_cases.index)
+        else:
+            self.filtered_indices = list(all_test_cases[all_test_cases["Functional Area"] == selected_area].index)
+
+        if not self.filtered_indices:
+            QMessageBox.warning(self, "No Test Cases", "No test cases match the selected filter.")
+            # Handle empty filter result - maybe disable navigation
+            self.test_case_progress_label.setText("Test Case: 0 / 0")
+            return
+
+        self.current_filtered_index = selected_index
+        self.load_test_case_by_index(self.filtered_indices[self.current_filtered_index])
+
+    def filter_by_area(self):
+        """Triggered when the functional area filter is changed."""
+        self.apply_filters()
+
+    def search_test_case(self, index):
+        """Finds and loads the test case selected from the search dropdown."""
+        if index < 0: return
+
+        identifier = self.search_combo.itemText(index)
+        tc_id = int(identifier.split(':')[0])
+
+        active_sheet = self.state.get_active_sheet()
+        all_test_cases = self.data_manager.get_sheet_data(active_sheet)
+
+        # Find the original index of this test case ID
+        original_index = all_test_cases[all_test_cases["Test Case ID"] == tc_id].index[0]
+
+        # Now, find where this original_index is in our currently filtered list
+        if original_index in self.filtered_indices:
+            self.current_filtered_index = self.filtered_indices.index(original_index)
+            self.load_test_case_by_index(original_index)
+        else:
+            QMessageBox.information(self, "Filter Active", "The selected test case is not in the current filtered view. Clear the filter to see it.")
+
+    def jump_to_test_case(self):
+        """Jumps to a specific test case number (1-based index)."""
+        try:
+            target_number = int(self.jump_to_input.text())
+            if 1 <= target_number <= len(self.filtered_indices):
+                self.current_filtered_index = target_number - 1
+                self.load_test_case_by_index(self.filtered_indices[self.current_filtered_index])
+            else:
+                QMessageBox.warning(self, "Invalid Number", f"Please enter a number between 1 and {len(self.filtered_indices)}.")
+        except ValueError:
+            QMessageBox.warning(self, "Invalid Input", "Please enter a valid number.")
+        finally:
+            self.jump_to_input.clear()
