@@ -58,8 +58,16 @@ class MainWindow(QWidget):
         self.execution_dashboard.load_session_data()
 
     def switch_to_launcher(self):
-        """Switches the view back to the Launcher screen."""
-        # Saving is now done in real-time by the DataManager, so no final save is needed here.
+        """Saves the session to Excel and switches the view back to the Launcher screen."""
+        if self.data_manager:
+            success, message = self.data_manager.save_to_excel()
+            if success:
+                # Optionally, show a success message, or just log it.
+                # For now, we'll keep it silent unless there's an error.
+                pass
+            else:
+                QMessageBox.warning(self, "Save Error", message)
+
         self.launcher_screen.refresh_view()
         self.stacked_widget.setCurrentWidget(self.launcher_screen)
         if self.execution_dashboard:

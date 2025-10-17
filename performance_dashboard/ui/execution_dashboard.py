@@ -326,6 +326,10 @@ class ExecutionDashboard(QWidget):
 
     def load_test_case_by_index(self, index):
         """Loads a specific test case into the UI by its original DataFrame index."""
+        # Save the data for the test case we are navigating away from.
+        if self.current_test_case is not None:
+            self.save_current_test_case_data()
+
         active_sheet = self.state.get_active_sheet()
         self.current_test_case = self.data_manager.get_test_case(active_sheet, index)
 
@@ -479,10 +483,22 @@ class ExecutionDashboard(QWidget):
             self.results_table.blockSignals(False)
 
     def save_and_return(self):
-        """Returns to the launcher screen. Saving is now handled in real-time."""
+        """Saves final data and returns to the launcher screen."""
         self.note_button_timer.stop() # Stop the timer to prevent crash
+        self.save_current_test_case_data() # Save the very last changes
         self.state.update_current_session('status', 'Completed') # Or some other status
         self.return_to_launcher()
+
+    def save_current_test_case_data(self):
+        """Explicitly saves notes for the current test case."""
+        if self.current_test_case is not None:
+            # The most recent notes are in the input box, not yet in the data manager
+            notes = self.notes_input.toPlainText()
+            self.data_manager.save_notes(
+                self.state.get_active_sheet(),
+                self.state.get_current_test_case_index(),
+                notes
+            )
 
     def manual_result_edit(self, item):
         """Handles manual editing of iteration values in the results table."""
@@ -617,16 +633,30 @@ class ExecutionDashboard(QWidget):
 
     def search_test_case(self, index):
         """Finds and loads the test case selected from the search dropdown."""
-        if index < 0: return
+        if index < 0:
+            return  # Ignore invalid signals
 
         identifier = self.search_combo.itemText(index)
-        tc_id = int(identifier.split(':')[0])
+        # Handle cases where the identifier might be empty or malformed
+        if ':' not in identifier:
+            return
+
+        tc_id_str = identifier.split(':')[0].strip()
 
         active_sheet = self.state.get_active_sheet()
         all_test_cases = self.data_manager.get_sheet_data(active_sheet)
 
-        # Find the original index of this test case ID
-        original_index = all_test_cases[all_test_cases["Test Case ID"] == tc_id].index[0]
+        # Ensure the 'Test Case ID' column is of a consistent type for comparison
+        all_test_cases["Test Case ID"] = all_test_cases["Test Case ID"].astype(str)
+
+        # Find the original DataFrame index for the selected Test Case ID
+        matching_rows = all_test_cases[all_test_cases["Test Case ID"] == tc_id_str]
+
+        if matching_rows.empty:
+            QMessageBox.warning(self, "Not Found", f"Test Case ID '{tc_id_str}' could not be found.")
+            return
+
+        original_index = matching_rows.index[0]
 
         # Now, find where this original_index is in our currently filtered list
         if original_index in self.filtered_indices:

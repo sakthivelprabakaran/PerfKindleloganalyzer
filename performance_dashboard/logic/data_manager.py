@@ -91,9 +91,6 @@ class DataManager:
                 average = iteration_values.mean()
                 df.loc[test_case_index, "Average"] = average
 
-            # Immediately persist the change to Excel
-            self.save_to_excel()
-
             # Return the updated row (test case)
             return self.get_test_case(sheet_name, test_case_index)
 
@@ -109,32 +106,28 @@ class DataManager:
                 return None
 
             df.loc[test_case_index, "Notes"] = notes
-
-            # Immediately persist the change to Excel
-            self.save_to_excel()
-
             return self.get_test_case(sheet_name, test_case_index)
 
         except Exception as e:
             print(f"Error saving notes to in-memory DataFrame: {e}")
             return None
 
-    def save_to_excel(self):
+    def save_to_excel(self, silent=False):
         """
         Writes the entire in-memory workbook back to the Excel file.
-        This is now a silent operation, returning True/False.
+        Returns a tuple (success, message).
         """
         if not self.workbook:
-            print("Error: No workbook data to save.")
-            return False
+            return False, "No data to save."
         try:
             with pd.ExcelWriter(self.file_path, engine='openpyxl') as writer:
                 for sheet_name, df in self.workbook.items():
                     df.to_excel(writer, sheet_name=sheet_name, index=False)
-            return True
+
+            message = "Session saved successfully." if not silent else ""
+            return True, message
         except Exception as e:
-            print(f"Error writing to Excel file: {e}")
-            return False
+            return False, f"Failed to save session: {e}"
 
     def get_all_results(self, sheet_name):
         """Retrieves results for all test cases from a sheet for the Results tab."""
