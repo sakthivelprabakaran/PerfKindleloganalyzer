@@ -1,6 +1,7 @@
 import json
 import os
 import numpy as np
+import shutil
 
 class NumpyJSONEncoder(json.JSONEncoder):
     """
@@ -25,13 +26,28 @@ class StateManager:
         self.load_sessions()
 
     def load_sessions(self):
-        """Loads the list of saved sessions from a JSON file."""
+        """
+        Loads the list of saved sessions from a JSON file.
+        If the file is corrupted, it backs it up and starts fresh.
+        """
         if os.path.exists(self.session_file_path):
             try:
                 with open(self.session_file_path, 'r') as f:
+                    # If the file is empty, json.load will raise an error
+                    if os.path.getsize(self.session_file_path) == 0:
+                        self.sessions = []
+                        return
                     self.sessions = json.load(f)
-            except (json.JSONDecodeError, IOError) as e:
-                print(f"Error loading sessions: {e}")
+            except json.JSONDecodeError as e:
+                print(f"Error decoding session file: {e}. Backing up corrupted file.")
+                try:
+                    shutil.copy(self.session_file_path, f"{self.session_file_path}.bak")
+                    os.remove(self.session_file_path) # Start with a fresh file
+                except IOError as backup_e:
+                    print(f"Could not back up corrupted file: {backup_e}")
+                self.sessions = []
+            except IOError as e:
+                print(f"Error reading session file: {e}")
                 self.sessions = []
 
     def save_sessions(self):
@@ -78,7 +94,8 @@ class StateManager:
         return self.current_session.get('current_test_case_index', 0) if self.current_session else 0
 
     def get_active_sheet(self):
-        return self.current_session.get('active_sheet', 'P0') if self.current_session else 'P0'
+        """Returns the 'priority' which is used as the sheet name for the current session."""
+        return self.current_session.get('priority', 'P0') if self.current_session else 'P0'
 
     def get_session_by_filename(self, filename):
         """Finds and returns a session from the list by its filename."""
