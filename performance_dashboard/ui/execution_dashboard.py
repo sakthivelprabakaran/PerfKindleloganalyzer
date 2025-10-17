@@ -5,7 +5,7 @@ import pandas as pd
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QGroupBox, QLabel, QPushButton,
     QTextEdit, QTableWidget, QTabWidget, QSplitter, QTableWidgetItem,
-    QHeaderView, QMessageBox, QFrame, QLineEdit, QCompleter
+    QHeaderView, QMessageBox, QFrame, QLineEdit, QCompleter, QComboBox
 )
 from PyQt5.QtGui import QPainter, QFont
 from PyQt5.QtCore import Qt, QTimer, QTime, QStringListModel
