@@ -59,6 +59,9 @@ class ExecutionDashboard(QWidget):
         self.total_test_cases = 0
         self.total_n_points = 0
 
+        self.filtered_indices = []  # To store the original indices of filtered test cases
+        self.current_filtered_index = 0 # To track position within the filtered list
+
         self.init_ui()
 
     def init_ui(self):
@@ -92,14 +95,27 @@ class ExecutionDashboard(QWidget):
         self.device_name_label = QLabel("<b>Device:</b> N/A")
         self.week_label = QLabel("<b>Week:</b> N/A")
         self.build_label = QLabel("<b>Build:</b> N/A")
+
+        # Current Execution Build
+        build_layout = QHBoxLayout()
+        self.current_build_input = QLineEdit()
+        self.current_build_input.setPlaceholderText("Set current build...")
+        set_build_btn = QPushButton("Set Build")
+        build_layout.addWidget(self.current_build_input)
+        build_layout.addWidget(set_build_btn)
+
         self.total_n_points_label = QLabel("<b>Total N-Points: 0</b>")
         session_layout.addWidget(self.session_info_label)
         session_layout.addWidget(self.device_name_label)
         session_layout.addWidget(self.week_label)
         session_layout.addWidget(self.build_label)
+        session_layout.addLayout(build_layout)
         session_layout.addWidget(self.total_n_points_label)
         session_group.setLayout(session_layout)
         layout.addWidget(session_group)
+
+        # Connect the button signal
+        set_build_btn.clicked.connect(self.set_current_build)
 
         # Timer
         timer_group = QGroupBox("⏱️ Timer")
@@ -148,6 +164,37 @@ class ExecutionDashboard(QWidget):
         nav_layout.addWidget(self.test_case_progress_label)
         nav_group.setLayout(nav_layout)
         layout.addWidget(nav_group)
+
+        # Advanced Navigation
+        adv_nav_group = QGroupBox("🔎 Advanced Navigation")
+        adv_nav_layout = QVBoxLayout()
+
+        # Filter by Component
+        adv_nav_layout.addWidget(QLabel("Filter by Component:"))
+        self.area_filter_combo = QComboBox()
+        self.area_filter_combo.addItem("All Components")
+        adv_nav_layout.addWidget(self.area_filter_combo)
+
+        # Search by Test Case Name/ID
+        adv_nav_layout.addWidget(QLabel("Search by Test Case Name/ID:"))
+        self.search_combo = QComboBox()
+        self.search_combo.setEditable(True)
+        self.search_combo.setInsertPolicy(QComboBox.NoInsert)
+        self.search_combo.setPlaceholderText("Type to search...")
+        adv_nav_layout.addWidget(self.search_combo)
+
+        # Jump to Test Case Number
+        jump_layout = QHBoxLayout()
+        self.jump_to_input = QLineEdit()
+        self.jump_to_input.setPlaceholderText("Go to #")
+        jump_btn = QPushButton("Jump")
+        jump_btn.setObjectName("jump_btn") # Set object name for later lookup
+        jump_layout.addWidget(self.jump_to_input)
+        jump_layout.addWidget(jump_btn)
+        adv_nav_layout.addLayout(jump_layout)
+
+        adv_nav_group.setLayout(adv_nav_layout)
+        layout.addWidget(adv_nav_group)
 
         # Notes Section
         notes_group = QGroupBox("📝 Notes")
@@ -269,7 +316,19 @@ class ExecutionDashboard(QWidget):
 
         self.total_test_cases = self.data_manager.get_test_case_count(active_sheet)
         self.update_total_n_points() # Calculate initial N-Points
-        self.load_test_case_by_index(self.state.get_current_test_case_index())
+
+        # Populate advanced navigation widgets
+        self.populate_advanced_nav(active_sheet)
+
+        # Connect signals
+        jump_btn = self.findChild(QPushButton, "jump_btn") # Find the button to connect it
+        if jump_btn:
+            jump_btn.clicked.connect(self.jump_to_test_case)
+        self.area_filter_combo.currentIndexChanged.connect(self.filter_by_area)
+        self.search_combo.activated.connect(self.search_test_case)
+
+        # Initial load
+        self.apply_filters()
         self.update_results_tab()
 
     def load_test_case_by_index(self, index):
@@ -331,11 +390,15 @@ class ExecutionDashboard(QWidget):
         # Format the recorded time to 3 decimal places for consistency
         formatted_time = float(f"{self.recorded_time:.3f}")
 
+        # Get the current build info from the state
+        current_build = self.state.current_session.get('current_build', '')
+
         updated_test_case = self.data_manager.save_iteration_time(
             self.state.get_active_sheet(),
             self.state.get_current_test_case_index(),
             self.current_iteration,
-            formatted_time
+            formatted_time,
+            current_build
         )
 
         if updated_test_case is not None:
@@ -381,14 +444,25 @@ class ExecutionDashboard(QWidget):
             # Iterations are 1-based, index is 0-based
             indicator.set_active(i < self.current_iteration - 1)
 
+    def set_current_build(self):
+        """Saves the entered build string to the current session state."""
+        build_text = self.current_build_input.text().strip()
+        if build_text:
+            self.state.update_current_session('current_build', build_text)
+            self.current_build_input.setStyleSheet("background-color: lightgreen;")
+        else:
+            self.current_build_input.setStyleSheet("")
+
     def save_notes(self):
         """Saves the notes for the current test case."""
         if self.current_test_case is not None:
             notes = self.notes_input.toPlainText()
+            current_build = self.state.current_session.get('current_build', '')
             updated_test_case = self.data_manager.save_notes(
                 self.state.get_active_sheet(),
                 self.state.get_current_test_case_index(),
-                notes
+                notes,
+                current_build
             )
             # Refresh the local test case data and provide user feedback
             if updated_test_case is not None:
@@ -513,3 +587,100 @@ class ExecutionDashboard(QWidget):
             self.navigate_next()
         else:
             super().keyPressEvent(event)
+
+    def populate_advanced_nav(self, sheet_name):
+        """Populates the filter and search dropdowns with data from the current sheet."""
+        # Component Filter
+        self.area_filter_combo.blockSignals(True)
+        self.area_filter_combo.clear()
+        self.area_filter_combo.addItem("All Components")
+        components = self.data_manager.get_unique_components(sheet_name)
+        self.area_filter_combo.addItems(components)
+        self.area_filter_combo.blockSignals(False)
+
+        # Searchable Test Case list
+        self.search_combo.blockSignals(True)
+        self.search_combo.clear()
+        identifiers = self.data_manager.get_all_test_case_identifiers(sheet_name)
+        self.search_model = QStringListModel(identifiers)
+        self.search_completer = QCompleter(self.search_model, self)
+        self.search_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.search_combo.setCompleter(self.search_completer)
+        self.search_combo.addItems(identifiers)
+        self.search_combo.setCurrentIndex(-1) # Start with no selection
+        self.search_combo.blockSignals(False)
+
+    def apply_filters(self, selected_index=0):
+        """
+        Applies the selected filters to determine the list of visible test cases.
+        """
+        active_sheet = self.state.get_active_sheet()
+        all_test_cases = self.data_manager.get_sheet_data(active_sheet)
+
+        selected_component = self.area_filter_combo.currentText()
+
+        if selected_component == "All Components":
+            self.filtered_indices = list(all_test_cases.index)
+        else:
+            self.filtered_indices = list(all_test_cases[all_test_cases["Component"] == selected_component].index)
+
+        if not self.filtered_indices:
+            QMessageBox.warning(self, "No Test Cases", "No test cases match the selected filter.")
+            # Handle empty filter result - maybe disable navigation
+            self.test_case_progress_label.setText("Test Case: 0 / 0")
+            return
+
+        self.current_filtered_index = selected_index
+        self.load_test_case_by_index(self.filtered_indices[self.current_filtered_index])
+
+    def filter_by_area(self):
+        """Triggered when the functional area filter is changed."""
+        self.apply_filters()
+
+    def search_test_case(self, index):
+        """Finds and loads the test case selected from the search dropdown."""
+        if index < 0:
+            return  # Ignore invalid signals
+
+        identifier = self.search_combo.itemText(index)
+        # Handle cases where the identifier might be empty or malformed
+        if ':' not in identifier:
+            return
+
+        tc_id_str = identifier.split(':')[0].strip()
+
+        active_sheet = self.state.get_active_sheet()
+        all_test_cases = self.data_manager.get_sheet_data(active_sheet)
+
+        # Ensure the 'Test Case ID' column is of a consistent type for comparison
+        all_test_cases["Test Case ID"] = all_test_cases["Test Case ID"].astype(str)
+
+        # Find the original DataFrame index for the selected Test Case ID
+        matching_rows = all_test_cases[all_test_cases["Test Case ID"] == tc_id_str]
+
+        if matching_rows.empty:
+            QMessageBox.warning(self, "Not Found", f"Test Case ID '{tc_id_str}' could not be found.")
+            return
+
+        original_index = matching_rows.index[0]
+
+        # Now, find where this original_index is in our currently filtered list
+        if original_index in self.filtered_indices:
+            self.current_filtered_index = self.filtered_indices.index(original_index)
+            self.load_test_case_by_index(original_index)
+        else:
+            QMessageBox.information(self, "Filter Active", "The selected test case is not in the current filtered view. Clear the filter to see it.")
+
+    def jump_to_test_case(self):
+        """Jumps to a specific test case number (1-based index)."""
+        try:
+            target_number = int(self.jump_to_input.text())
+            if 1 <= target_number <= len(self.filtered_indices):
+                self.current_filtered_index = target_number - 1
+                self.load_test_case_by_index(self.filtered_indices[self.current_filtered_index])
+            else:
+                QMessageBox.warning(self, "Invalid Number", f"Please enter a number between 1 and {len(self.filtered_indices)}.")
+        except ValueError:
+            QMessageBox.warning(self, "Invalid Input", "Please enter a valid number.")
+        finally:
+            self.jump_to_input.clear()

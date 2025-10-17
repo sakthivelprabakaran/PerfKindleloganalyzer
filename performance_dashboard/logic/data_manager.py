@@ -55,8 +55,8 @@ class DataManager:
         sheet_data = self.get_sheet_data(sheet_name)
         return len(sheet_data)
 
-    def save_iteration_time(self, sheet_name, test_case_index, iteration, time):
-        """Saves a single iteration time to the in-memory DataFrame."""
+    def save_iteration_time(self, sheet_name, test_case_index, iteration, time, build_info):
+        """Saves a single iteration time and the current build info to the in-memory DataFrame."""
         if not (1 <= iteration <= 5):
             print("Error: Iteration must be between 1 and 5.")
             return None
@@ -66,8 +66,9 @@ class DataManager:
             if df.empty:
                 return None
 
-            # Update the specific iteration value
+            # Update the specific iteration value and build
             df.loc[test_case_index, f"Iteration{iteration}"] = time
+            self.save_build_info(sheet_name, test_case_index, build_info)
 
             # Recalculate average if all iterations are present
             iteration_cols = [f"Iteration{i}" for i in range(1, 6)]
@@ -84,19 +85,31 @@ class DataManager:
             print(f"Error saving time to in-memory DataFrame: {e}")
             return None
 
-    def save_notes(self, sheet_name, test_case_index, notes):
-        """Saves notes for a specific test case to the in-memory DataFrame."""
+    def save_notes(self, sheet_name, test_case_index, notes, build_info):
+        """Saves notes and the current build info for a specific test case."""
         try:
             df = self.get_sheet_data(sheet_name)
             if df.empty:
                 return None
 
             df.loc[test_case_index, "Notes"] = notes
+            self.save_build_info(sheet_name, test_case_index, build_info)
             return self.get_test_case(sheet_name, test_case_index)
 
         except Exception as e:
             print(f"Error saving notes to in-memory DataFrame: {e}")
             return None
+
+    def save_build_info(self, sheet_name, test_case_index, build_info):
+        """Saves the build string to the 'Build' column for a specific test case."""
+        try:
+            df = self.get_sheet_data(sheet_name)
+            if df.empty or 'Build' not in df.columns:
+                return
+
+            df.loc[test_case_index, "Build"] = build_info
+        except Exception as e:
+            print(f"Error saving build info: {e}")
 
     def save_to_excel(self):
         """Writes the entire in-memory workbook back to the Excel file."""
@@ -118,7 +131,7 @@ class DataManager:
         if not sheet_data.empty:
             results_columns = [
                 "Test Case Name", "Iteration1", "Iteration2", "Iteration3",
-                "Iteration4", "Iteration5", "Average"
+                "Iteration4", "Iteration5", "Average", "Notes"
             ]
             # Ensure all required columns exist, fill missing with ''
             for col in results_columns:
