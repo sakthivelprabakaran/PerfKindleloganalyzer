@@ -23,7 +23,9 @@ class StateManager:
         """Saves the list of sessions to a JSON file."""
         try:
             with open(self.session_file_path, 'w') as f:
-                json.dump(self.sessions, f, indent=4)
+                # Use a custom encoder if it has been set, otherwise use default
+                encoder = getattr(self, 'json_encoder', None)
+                json.dump(self.sessions, f, indent=4, cls=encoder)
         except IOError as e:
             print(f"Error saving sessions: {e}")
 

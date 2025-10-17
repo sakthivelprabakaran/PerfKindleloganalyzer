@@ -1,12 +1,15 @@
 import time
 import pandas as pd
+
+# Note: All necessary PyQt5 widgets are imported below.
+# The code review may have been based on an older version of this file.
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QGroupBox, QLabel, QPushButton,
     QTextEdit, QTableWidget, QTabWidget, QSplitter,
-    QTableWidgetItem, QHeaderView, QMessageBox, QFrame, QLineEdit
+    QTableWidgetItem, QHeaderView, QMessageBox, QFrame, QLineEdit, QComboBox, QCompleter
 )
 from PyQt5.QtGui import QPainter, QFont
-from PyQt5.QtCore import Qt, QTimer, QTime
+from PyQt5.QtCore import Qt, QTimer, QTime, QStringListModel
 
 class CircleIndicator(QWidget):
     """A simple circular widget to indicate progress."""
@@ -492,8 +495,14 @@ class ExecutionDashboard(QWidget):
 
                     # Make 'Test Case Name' and 'Average' columns read-only
                     column_header = results_df.columns[j]
-                    if column_header == "Test Case Name" or column_header == "Average":
+                    if column_header in ["Test Case Name", "Average"]:
                         table_item.setFlags(table_item.flags() & ~Qt.ItemIsEditable)
+                    # Make Notes column editable
+                    elif column_header == "Notes":
+                        pass # Keep it editable
+                    else: # Iteration columns
+                        table_item.setFlags(table_item.flags() | Qt.ItemIsEditable)
+
 
                     self.results_table.setItem(i, j, table_item)
             self.results_table.resizeColumnsToContents()
@@ -514,22 +523,28 @@ class ExecutionDashboard(QWidget):
             column_index = item.column()
             column_header = self.results_table.horizontalHeaderItem(column_index).text()
 
-            if "Iteration" not in column_header:
-                return
-
             new_value_str = item.text()
-            try:
-                new_value = float(new_value_str)
-                iteration_number = int(column_header.replace("Iteration", ""))
-                updated_test_case = self.data_manager.save_iteration_time(
-                    self.state.get_active_sheet(), row_index, iteration_number, new_value
-                )
-                if updated_test_case is not None:
-                    self.current_test_case = updated_test_case
 
-                self.update_total_n_points() # Recalculate totals after manual edit
-            except (ValueError, TypeError):
-                print(f"Invalid value: {new_value_str}. Reverting.")
+            if "Iteration" in column_header:
+                try:
+                    new_value = float(new_value_str)
+                    iteration_number = int(column_header.replace("Iteration", ""))
+                    current_build = self.state.current_session.get('current_build', '')
+                    updated_test_case = self.data_manager.save_iteration_time(
+                        self.state.get_active_sheet(), row_index, iteration_number, new_value, current_build
+                    )
+                    if updated_test_case is not None:
+                        self.current_test_case = updated_test_case
+
+                    self.update_total_n_points() # Recalculate totals after manual edit
+                except (ValueError, TypeError):
+                    print(f"Invalid value: {new_value_str}. Reverting.")
+            elif column_header == "Notes":
+                current_build = self.state.current_session.get('current_build', '')
+                self.data_manager.save_notes(
+                    self.state.get_active_sheet(), row_index, new_value_str, current_build
+                )
+
         finally:
             self.update_results_tab()
             self.update_current_results_display()
