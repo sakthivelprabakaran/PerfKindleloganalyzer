@@ -5,7 +5,7 @@ import pandas as pd
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QGroupBox, QLabel, QPushButton,
     QTextEdit, QTableWidget, QTabWidget, QSplitter, QTableWidgetItem,
-    QHeaderView, QMessageBox, QFrame, QLineEdit, QCompleter, QComboBox
+    QHeaderView, QMessageBox, QFrame, QLineEdit, QCompleter, QComboBox, QScrollArea
 )
 from PyQt5.QtGui import QPainter, QFont
 from PyQt5.QtCore import Qt, QTimer, QTime, QStringListModel
@@ -85,11 +85,26 @@ class ExecutionDashboard(QWidget):
         main_splitter.setSizes([400, 1200])
 
     def create_left_panel(self):
-        """Creates the left panel for timer controls and navigation."""
-        panel = QGroupBox("Timer Control & Navigation")
-        layout = QVBoxLayout()
-        panel.setLayout(layout)
+        """Creates the scrollable left panel for timer controls and navigation."""
+        # Main container for the left side
+        left_panel_container = QGroupBox("Timer Control & Navigation")
 
+        # Scroll Area
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+
+        # Content widget for the scroll area
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget) # The layout is now on the content widget
+
+        # Set the content widget as the scroll area's widget
+        scroll_area.setWidget(content_widget)
+
+        # Main layout for the QGroupBox
+        container_layout = QVBoxLayout(left_panel_container)
+        container_layout.addWidget(scroll_area)
+
+        # From here, add all widgets to the 'layout' as before
         # Session Info
         session_group = QGroupBox("📊 Session Info")
         session_layout = QVBoxLayout()
@@ -152,10 +167,10 @@ class ExecutionDashboard(QWidget):
         adv_nav_group = QGroupBox("🔎 Advanced Navigation")
         adv_nav_layout = QVBoxLayout()
 
-        # Filter by Functional Area
-        adv_nav_layout.addWidget(QLabel("Filter by Functional Area:"))
+        # Filter by Component
+        adv_nav_layout.addWidget(QLabel("Filter by Component:"))
         self.area_filter_combo = QComboBox()
-        self.area_filter_combo.addItem("All Areas")
+        self.area_filter_combo.addItem("All Components")
         adv_nav_layout.addWidget(self.area_filter_combo)
 
         # Search by Test Case Name/ID
@@ -198,7 +213,7 @@ class ExecutionDashboard(QWidget):
         save_return_btn.clicked.connect(self.save_and_return)
         layout.addWidget(save_return_btn)
 
-        return panel
+        return left_panel_container
 
     def create_right_panel(self):
         """Creates the right panel for test case details and results."""
@@ -553,12 +568,12 @@ class ExecutionDashboard(QWidget):
 
     def populate_advanced_nav(self, sheet_name):
         """Populates the filter and search dropdowns with data from the current sheet."""
-        # Functional Area Filter
+        # Component Filter
         self.area_filter_combo.blockSignals(True)
         self.area_filter_combo.clear()
-        self.area_filter_combo.addItem("All Areas")
-        areas = self.data_manager.get_unique_functional_areas(sheet_name)
-        self.area_filter_combo.addItems(areas)
+        self.area_filter_combo.addItem("All Components")
+        components = self.data_manager.get_unique_components(sheet_name)
+        self.area_filter_combo.addItems(components)
         self.area_filter_combo.blockSignals(False)
 
         # Searchable Test Case list
@@ -580,12 +595,12 @@ class ExecutionDashboard(QWidget):
         active_sheet = self.state.get_active_sheet()
         all_test_cases = self.data_manager.get_sheet_data(active_sheet)
 
-        selected_area = self.area_filter_combo.currentText()
+        selected_component = self.area_filter_combo.currentText()
 
-        if selected_area == "All Areas":
+        if selected_component == "All Components":
             self.filtered_indices = list(all_test_cases.index)
         else:
-            self.filtered_indices = list(all_test_cases[all_test_cases["Functional Area"] == selected_area].index)
+            self.filtered_indices = list(all_test_cases[all_test_cases["Component"] == selected_component].index)
 
         if not self.filtered_indices:
             QMessageBox.warning(self, "No Test Cases", "No test cases match the selected filter.")

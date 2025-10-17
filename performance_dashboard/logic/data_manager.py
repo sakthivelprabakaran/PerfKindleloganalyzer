@@ -152,11 +152,11 @@ class DataManager:
             return sheet_data[results_columns].fillna('')
         return pd.DataFrame()
 
-    def get_unique_functional_areas(self, sheet_name):
-        """Returns a sorted list of unique values from the 'Functional Area' column."""
+    def get_unique_components(self, sheet_name):
+        """Returns a sorted list of unique values from the 'Component' column."""
         sheet_data = self.get_sheet_data(sheet_name)
-        if sheet_data is not None and "Functional Area" in sheet_data.columns:
-            return sorted(sheet_data["Functional Area"].unique().tolist())
+        if sheet_data is not None and "Component" in sheet_data.columns:
+            return sorted(sheet_data["Component"].unique().tolist())
         return []
 
     def get_all_test_case_identifiers(self, sheet_name):
