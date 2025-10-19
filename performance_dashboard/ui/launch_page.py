@@ -1,3 +1,4 @@
+import pandas as pd
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QGroupBox, QLabel, QLineEdit,
     QComboBox, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView,
@@ -16,6 +17,7 @@ class LauncherScreen(QWidget):
         self.switch_to_dashboard = switch_to_dashboard_callback
         self.back_to_launcher_callback = back_to_launcher_callback
         self.init_ui()
+        self.load_priorities()
         self.load_session_table()
 
     def init_ui(self):
@@ -69,7 +71,6 @@ class LauncherScreen(QWidget):
         # Priority
         layout.addWidget(QLabel("Priority:"))
         self.priority_combo = QComboBox()
-        self.priority_combo.addItems(["P0", "P1", "P2", "P3", "750", "HWR", "GEN AI"])
         layout.addWidget(self.priority_combo)
 
         layout.addStretch()
@@ -232,3 +233,14 @@ class LauncherScreen(QWidget):
         self.build_details_input.clear()
         self.week_combo.setCurrentIndex(0)
         self.priority_combo.setCurrentIndex(0)
+
+    def load_priorities(self):
+        """Loads priorities from the template excel file."""
+        try:
+            template_path = "performance_dashboard/assets/template_test_cases.xlsx"
+            xls = pd.ExcelFile(template_path)
+            self.priority_combo.addItems(xls.sheet_names)
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Could not load priorities from template: {e}")
+            # Add default priorities as a fallback
+            self.priority_combo.addItems(["P0", "P1", "P2"])

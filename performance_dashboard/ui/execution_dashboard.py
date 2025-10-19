@@ -159,6 +159,11 @@ class ExecutionDashboard(QWidget):
         self.confirm_iteration_btn.clicked.connect(self.confirm_iteration)
         iteration_layout.addLayout(self.iteration_indicators_layout)
         iteration_layout.addWidget(self.confirm_iteration_btn)
+
+        self.retest_btn = QPushButton("Retest")
+        self.retest_btn.clicked.connect(self.retest_current_case)
+        iteration_layout.addWidget(self.retest_btn)
+
         layout.addWidget(iteration_group)
 
         # Navigation Controls
@@ -394,6 +399,7 @@ class ExecutionDashboard(QWidget):
     def confirm_iteration(self):
         """Saves the current time and moves to the next iteration."""
         if self.current_iteration > 5:
+            # This part remains as a safeguard, but the main notification is moved.
             QMessageBox.information(self, "Completed", "All iterations for this test case are complete.")
             return
 
@@ -415,13 +421,18 @@ class ExecutionDashboard(QWidget):
             self.current_test_case = updated_test_case
 
         # Check if all iterations are now complete to update N-Points
-        self.determine_next_iteration() # This will now set current_iteration to 6 if complete
-        if self.current_iteration > 5:
-            self.update_total_n_points()
+        was_final_iteration = (self.current_iteration == 5)
 
-        self.reset_timer_and_iterations()
-        self.update_results_tab()
-        self.update_current_results_display()
+        self.determine_next_iteration() # This will now set current_iteration to 6 if complete
+
+        if was_final_iteration:
+            self.update_total_n_points()
+            QMessageBox.information(self, "Completed", "All 5 iterations for this test case are complete. Navigating to the next test case.")
+            self.navigate_next()
+        else:
+            self.reset_timer_and_iterations()
+            self.update_results_tab()
+            self.update_current_results_display()
 
     def reset_timer_and_iterations(self):
         """Resets the timer and iteration UI elements."""
@@ -607,20 +618,22 @@ class ExecutionDashboard(QWidget):
         else:
             super().keyPressEvent(event)
 
-    def populate_advanced_nav(self, sheet_name):
+    def populate_advanced_nav(self, sheet_name, identifiers=None):
         """Populates the filter and search dropdowns with data from the current sheet."""
-        # Component Filter
-        self.area_filter_combo.blockSignals(True)
-        self.area_filter_combo.clear()
-        self.area_filter_combo.addItem("All Components")
-        components = self.data_manager.get_unique_components(sheet_name)
-        self.area_filter_combo.addItems(components)
-        self.area_filter_combo.blockSignals(False)
+        # Component Filter (only needs to be populated once)
+        if self.area_filter_combo.count() == 1:
+            self.area_filter_combo.blockSignals(True)
+            components = self.data_manager.get_unique_components(sheet_name)
+            self.area_filter_combo.addItems(components)
+            self.area_filter_combo.blockSignals(False)
 
-        # Searchable Test Case list
+        # Searchable Test Case list (can be updated dynamically)
         self.search_combo.blockSignals(True)
         self.search_combo.clear()
-        identifiers = self.data_manager.get_all_test_case_identifiers(sheet_name)
+
+        if identifiers is None:
+            identifiers = self.data_manager.get_all_test_case_identifiers(sheet_name)
+
         self.search_model = QStringListModel(identifiers)
         self.search_completer = QCompleter(self.search_model, self)
         self.search_completer.setCaseSensitivity(Qt.CaseInsensitive)
@@ -650,6 +663,12 @@ class ExecutionDashboard(QWidget):
             return
 
         self.current_filtered_index = selected_index
+
+        # Get the identifiers for the filtered data and update the search combo
+        filtered_df = all_test_cases.loc[self.filtered_indices]
+        filtered_identifiers = self.data_manager.get_all_test_case_identifiers(active_sheet, filtered_df)
+        self.populate_advanced_nav(active_sheet, filtered_identifiers)
+
         self.load_test_case_by_index(self.filtered_indices[self.current_filtered_index])
 
     def filter_by_area(self):
@@ -703,3 +722,29 @@ class ExecutionDashboard(QWidget):
             QMessageBox.warning(self, "Invalid Input", "Please enter a valid number.")
         finally:
             self.jump_to_input.clear()
+
+    def retest_current_case(self):
+        """Clears the results for the current test case to allow for re-testing."""
+        if self.current_test_case is None:
+            return
+
+        reply = QMessageBox.question(self, 'Confirm Retest',
+                                     "Are you sure you want to clear all results for this test case?",
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+
+        if reply == QMessageBox.Yes:
+            active_sheet = self.state.get_active_sheet()
+            index = self.state.get_current_test_case_index()
+
+            # This new method in DataManager will clear the relevant cells
+            updated_test_case = self.data_manager.clear_test_case_results(active_sheet, index)
+
+            if updated_test_case is not None:
+                self.current_test_case = updated_test_case
+                self.update_total_n_points()
+                self.update_results_tab()
+                self.update_current_results_display()
+                self.reset_timer_and_iterations()
+                QMessageBox.information(self, "Success", "Test case results have been cleared.")
+            else:
+                QMessageBox.warning(self, "Error", "Could not clear test case results.")

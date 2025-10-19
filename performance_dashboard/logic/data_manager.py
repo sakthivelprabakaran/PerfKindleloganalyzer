@@ -16,17 +16,27 @@ class DataManager:
 
     @staticmethod
     def create_session_file(session_info):
-        """Copies the master template to the project path to create a new session file."""
+        """
+        Creates a new session file in the project path containing only the sheet
+        for the selected priority.
+        """
         template_path = "performance_dashboard/assets/template_test_cases.xlsx"
         destination_path = os.path.join(session_info['project_path'], session_info['file_name'])
+        priority = session_info.get('priority')
 
         if not os.path.exists(session_info['project_path']):
             os.makedirs(session_info['project_path'])
 
         try:
-            shutil.copy(template_path, destination_path)
-            return True, f"Session file created at {destination_path}"
-        except IOError as e:
+            # Read only the specific sheet for the selected priority
+            priority_df = pd.read_excel(template_path, sheet_name=priority)
+
+            # Write this single sheet to the new session file
+            with pd.ExcelWriter(destination_path, engine='openpyxl') as writer:
+                priority_df.to_excel(writer, sheet_name=priority, index=False)
+
+            return True, f"Session file for priority '{priority}' created at {destination_path}"
+        except Exception as e:
             return False, f"Error creating session file: {e}"
 
     def load_data(self):
@@ -148,9 +158,16 @@ class DataManager:
             return sheet_data["Component"].unique().tolist()
         return []
 
-    def get_all_test_case_identifiers(self, sheet_name):
-        """Returns a list of 'ID: Name' strings for all test cases for search functionality."""
-        sheet_data = self.get_sheet_data(sheet_name)
+    def get_all_test_case_identifiers(self, sheet_name, dataframe=None):
+        """
+        Returns a list of 'ID: Name' strings for all test cases for search functionality.
+        If a DataFrame is provided, it will be used instead of the full sheet data.
+        """
+        if dataframe is None:
+            sheet_data = self.get_sheet_data(sheet_name)
+        else:
+            sheet_data = dataframe
+
         if not sheet_data.empty and "Test Case ID" in sheet_data.columns and "Test Case Name" in sheet_data.columns:
             # Combine 'Test Case ID' and 'Test Case Name' for a user-friendly identifier
             return sheet_data.apply(
@@ -158,3 +175,20 @@ class DataManager:
                 axis=1
             ).tolist()
         return []
+
+    def clear_test_case_results(self, sheet_name, test_case_index):
+        """Clears the iteration and average results for a specific test case."""
+        try:
+            df = self.get_sheet_data(sheet_name)
+            if df.empty:
+                return None
+
+            # Clear iteration and average values
+            for i in range(1, 6):
+                df.loc[test_case_index, f"Iteration{i}"] = ""
+            df.loc[test_case_index, "Average"] = ""
+
+            return self.get_test_case(sheet_name, test_case_index)
+        except Exception as e:
+            print(f"Error clearing test case results: {e}")
+            return None
