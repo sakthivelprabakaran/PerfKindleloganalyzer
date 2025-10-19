@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
     QTableWidgetItem, QHeaderView, QMessageBox, QFrame, QLineEdit, QComboBox, QCompleter, QScrollArea
 )
 from PyQt5.QtGui import QPainter, QFont
-from PyQt5.QtCore import Qt, QTimer, QTime, QStringListModel
+from PyQt5.QtCore import Qt, QTimer, QTime, QStringListModel, QSize
 
 class CircleIndicator(QWidget):
     """A simple circular widget to indicate progress."""
