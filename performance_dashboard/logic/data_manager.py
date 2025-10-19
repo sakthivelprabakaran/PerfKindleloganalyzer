@@ -140,3 +140,21 @@ class DataManager:
 
             return sheet_data[results_columns].fillna('')
         return pd.DataFrame()
+
+    def get_unique_components(self, sheet_name):
+        """Returns a list of unique values from the 'Component' column."""
+        sheet_data = self.get_sheet_data(sheet_name)
+        if not sheet_data.empty and "Component" in sheet_data.columns:
+            return sheet_data["Component"].unique().tolist()
+        return []
+
+    def get_all_test_case_identifiers(self, sheet_name):
+        """Returns a list of 'ID: Name' strings for all test cases for search functionality."""
+        sheet_data = self.get_sheet_data(sheet_name)
+        if not sheet_data.empty and "Test Case ID" in sheet_data.columns and "Test Case Name" in sheet_data.columns:
+            # Combine 'Test Case ID' and 'Test Case Name' for a user-friendly identifier
+            return sheet_data.apply(
+                lambda row: f"{row['Test Case ID']}: {row['Test Case Name']}",
+                axis=1
+            ).tolist()
+        return []
