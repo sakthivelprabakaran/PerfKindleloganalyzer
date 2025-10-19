@@ -6,7 +6,7 @@ import pandas as pd
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QGroupBox, QLabel, QPushButton,
     QTextEdit, QTableWidget, QTabWidget, QSplitter,
-    QTableWidgetItem, QHeaderView, QMessageBox, QFrame, QLineEdit, QComboBox, QCompleter
+    QTableWidgetItem, QHeaderView, QMessageBox, QFrame, QLineEdit, QComboBox, QCompleter, QScrollArea
 )
 from PyQt5.QtGui import QPainter, QFont
 from PyQt5.QtCore import Qt, QTimer, QTime, QStringListModel
@@ -33,10 +33,31 @@ class CircleIndicator(QWidget):
 
 
 class DynamicHeightTextEdit(QTextEdit):
-    """A QTextEdit that automatically adjusts its height to fit its content."""
+    """
+    A QTextEdit that automatically adjusts its height to fit its content,
+    providing a stable size hint for layout management.
+    """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setReadOnly(True)
+        # Use textChanged signal for more reliable updates
+        self.textChanged.connect(self.update_geometry)
+
+    def sizeHint(self):
+        """Provide a dynamic size hint based on the document's height."""
+        doc_height = self.document().size().height()
+        margin = self.contentsMargins().top() + self.contentsMargins().bottom()
+        return QSize(super().sizeHint().width(), int(doc_height + margin))
+
+    def update_geometry(self):
+        """Inform the layout that the size hint has changed."""
+        # This will trigger a layout recalculation that respects the new sizeHint
+        self.updateGeometry()
+
+    def setText(self, text):
+        """Override setText to ensure the geometry is updated after content is set."""
+        super().setText(text)
+        # The textChanged signal will fire, which calls self.update_geometry
 
 
 class ExecutionDashboard(QWidget):
@@ -51,9 +72,6 @@ class ExecutionDashboard(QWidget):
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_timer_display)
-        self.note_button_timer = QTimer(self)
-        self.note_button_timer.setSingleShot(True)
-        self.note_button_timer.timeout.connect(lambda: self.add_note_btn.setText("Add Note"))
         self.start_time = 0
         self.recorded_time = 0
         self.current_iteration = 1
@@ -86,27 +104,25 @@ class ExecutionDashboard(QWidget):
         main_splitter.setSizes([400, 1200])
 
     def create_left_panel(self):
-        """Creates the left panel for timer controls and navigation."""
-        panel = QGroupBox("Timer Control & Navigation")
-        layout = QVBoxLayout()
-        panel.setLayout(layout)
+        """Creates the left panel for timer controls and navigation, wrapped in a scroll area."""
+        # This is the main widget that will contain all the controls.
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
 
         # Session Info
         session_group = QGroupBox("📊 Session Info")
-        session_layout = QVBoxLayout()
+        session_layout = QVBoxLayout(session_group)
         self.session_info_label = QLabel("<b>File:</b> N/A")
         self.device_name_label = QLabel("<b>Device:</b> N/A")
         self.week_label = QLabel("<b>Week:</b> N/A")
         self.build_label = QLabel("<b>Build:</b> N/A")
-
-        # Current Execution Build
         build_layout = QHBoxLayout()
         self.current_build_input = QLineEdit()
         self.current_build_input.setPlaceholderText("Set current build...")
         set_build_btn = QPushButton("Set Build")
+        set_build_btn.clicked.connect(self.set_current_build)
         build_layout.addWidget(self.current_build_input)
         build_layout.addWidget(set_build_btn)
-
         self.total_n_points_label = QLabel("<b>Total N-Points: 0</b>")
         session_layout.addWidget(self.session_info_label)
         session_layout.addWidget(self.device_name_label)
@@ -114,46 +130,40 @@ class ExecutionDashboard(QWidget):
         session_layout.addWidget(self.build_label)
         session_layout.addLayout(build_layout)
         session_layout.addWidget(self.total_n_points_label)
-        session_group.setLayout(session_layout)
         layout.addWidget(session_group)
-
-        # Connect the button signal
-        set_build_btn.clicked.connect(self.set_current_build)
 
         # Timer
         timer_group = QGroupBox("⏱️ Timer")
-        timer_layout = QVBoxLayout()
+        timer_layout = QVBoxLayout(timer_group)
         self.timer_display = QLabel("00:00.000")
         self.timer_display.setAlignment(Qt.AlignCenter)
         self.timer_display.setFont(QFont("Arial", 50, QFont.Bold))
         self.timer_display.setObjectName("timerDisplay")
-        timer_layout.addWidget(self.timer_display)
         self.start_stop_btn = QPushButton("Start (Space)")
         self.start_stop_btn.clicked.connect(self.toggle_timer)
+        timer_layout.addWidget(self.timer_display)
         timer_layout.addWidget(self.start_stop_btn)
-        timer_group.setLayout(timer_layout)
         layout.addWidget(timer_group)
 
         # Iteration Management
         iteration_group = QGroupBox("🔄 Iteration Management")
-        iteration_layout = QVBoxLayout()
+        iteration_layout = QVBoxLayout(iteration_group)
         self.iteration_indicators_layout = QHBoxLayout()
         self.iteration_indicators = []
         for _ in range(5):
             indicator = CircleIndicator()
             self.iteration_indicators.append(indicator)
             self.iteration_indicators_layout.addWidget(indicator)
-        iteration_layout.addLayout(self.iteration_indicators_layout)
         self.confirm_iteration_btn = QPushButton("Confirm & Next Iteration (Enter)")
         self.confirm_iteration_btn.setEnabled(False)
         self.confirm_iteration_btn.clicked.connect(self.confirm_iteration)
+        iteration_layout.addLayout(self.iteration_indicators_layout)
         iteration_layout.addWidget(self.confirm_iteration_btn)
-        iteration_group.setLayout(iteration_layout)
         layout.addWidget(iteration_group)
 
         # Navigation Controls
         nav_group = QGroupBox("Navigate")
-        nav_layout = QVBoxLayout()
+        nav_layout = QVBoxLayout(nav_group)
         nav_buttons_layout = QHBoxLayout()
         prev_btn = QPushButton("⬅️ Previous")
         prev_btn.clicked.connect(self.navigate_previous)
@@ -161,54 +171,41 @@ class ExecutionDashboard(QWidget):
         next_btn.clicked.connect(self.navigate_next)
         nav_buttons_layout.addWidget(prev_btn)
         nav_buttons_layout.addWidget(next_btn)
-        nav_layout.addLayout(nav_buttons_layout)
         self.test_case_progress_label = QLabel("Test Case: 1 / 1")
         self.test_case_progress_label.setAlignment(Qt.AlignCenter)
+        nav_layout.addLayout(nav_buttons_layout)
         nav_layout.addWidget(self.test_case_progress_label)
-        nav_group.setLayout(nav_layout)
         layout.addWidget(nav_group)
 
         # Advanced Navigation
         adv_nav_group = QGroupBox("🔎 Advanced Navigation")
-        adv_nav_layout = QVBoxLayout()
-
-        # Filter by Component
+        adv_nav_layout = QVBoxLayout(adv_nav_group)
         adv_nav_layout.addWidget(QLabel("Filter by Component:"))
         self.area_filter_combo = QComboBox()
         self.area_filter_combo.addItem("All Components")
         adv_nav_layout.addWidget(self.area_filter_combo)
-
-        # Search by Test Case Name/ID
         adv_nav_layout.addWidget(QLabel("Search by Test Case Name/ID:"))
         self.search_combo = QComboBox()
         self.search_combo.setEditable(True)
         self.search_combo.setInsertPolicy(QComboBox.NoInsert)
         self.search_combo.setPlaceholderText("Type to search...")
         adv_nav_layout.addWidget(self.search_combo)
-
-        # Jump to Test Case Number
         jump_layout = QHBoxLayout()
         self.jump_to_input = QLineEdit()
         self.jump_to_input.setPlaceholderText("Go to #")
         jump_btn = QPushButton("Jump")
-        jump_btn.setObjectName("jump_btn") # Set object name for later lookup
+        jump_btn.setObjectName("jump_btn")
         jump_layout.addWidget(self.jump_to_input)
         jump_layout.addWidget(jump_btn)
         adv_nav_layout.addLayout(jump_layout)
-
-        adv_nav_group.setLayout(adv_nav_layout)
         layout.addWidget(adv_nav_group)
 
         # Notes Section
         notes_group = QGroupBox("📝 Notes")
-        notes_layout = QVBoxLayout()
+        notes_layout = QVBoxLayout(notes_group)
         self.notes_input = QTextEdit()
         self.notes_input.setPlaceholderText("Enter notes for the current test case...")
         notes_layout.addWidget(self.notes_input)
-        self.add_note_btn = QPushButton("Add Note")
-        self.add_note_btn.clicked.connect(self.save_notes)
-        notes_layout.addWidget(self.add_note_btn)
-        notes_group.setLayout(notes_layout)
         layout.addWidget(notes_group)
 
         layout.addStretch()
@@ -218,7 +215,13 @@ class ExecutionDashboard(QWidget):
         save_return_btn.clicked.connect(self.save_and_return)
         layout.addWidget(save_return_btn)
 
-        return panel
+        # Create and configure the scroll area
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setWidget(content_widget)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        return scroll_area
 
     def create_right_panel(self):
         """Creates the right panel for test case details and results."""
@@ -335,7 +338,11 @@ class ExecutionDashboard(QWidget):
         self.update_results_tab()
 
     def load_test_case_by_index(self, index):
-        """Loads a specific test case into the UI."""
+        """Loads a specific test case into the UI, saving previous notes first."""
+        # Auto-save notes from the previous test case before loading the new one.
+        if self.current_test_case is not None:
+            self.save_notes()
+
         active_sheet = self.state.get_active_sheet()
         self.current_test_case = self.data_manager.get_test_case(active_sheet, index)
 
@@ -358,13 +365,13 @@ class ExecutionDashboard(QWidget):
     def navigate_next(self):
         current_index = self.state.get_current_test_case_index()
         if current_index + 1 < self.total_test_cases:
-            # Notes are now saved explicitly via the "Add Note" button
+            self.save_notes() # Auto-save before navigating
             self.load_test_case_by_index(current_index + 1)
 
     def navigate_previous(self):
         current_index = self.state.get_current_test_case_index()
         if current_index > 0:
-            # Notes are now saved explicitly via the "Add Note" button
+            self.save_notes() # Auto-save before navigating
             self.load_test_case_by_index(current_index - 1)
 
     def toggle_timer(self):
@@ -467,11 +474,9 @@ class ExecutionDashboard(QWidget):
                 notes,
                 current_build
             )
-            # Refresh the local test case data and provide user feedback
+            # Refresh the local test case data
             if updated_test_case is not None:
                 self.current_test_case = updated_test_case
-                self.add_note_btn.setText("Note Saved!")
-                self.note_button_timer.start(2000) # Reset text after 2 seconds
 
     def update_results_tab(self):
         """Refreshes the results table for the current sheet."""
@@ -510,8 +515,7 @@ class ExecutionDashboard(QWidget):
 
     def save_and_return(self):
         """Saves final state and returns to the launcher screen."""
-        self.note_button_timer.stop() # Stop the timer to prevent crash
-        # self.save_notes() # No longer needed as it's explicit
+        self.save_notes() # Save any pending notes before returning
         self.state.update_current_session('status', 'Completed') # Or some other status
         self.return_to_launcher()
 
