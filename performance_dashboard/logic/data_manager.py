@@ -1,6 +1,27 @@
 import pandas as pd
 import shutil
 import os
+from PyQt5.QtCore import QThread, pyqtSignal, QObject
+
+class SaveThread(QThread):
+    """
+    Background thread for saving Excel files to prevent UI freezing.
+    """
+    finished_signal = pyqtSignal(bool, str)
+
+    def __init__(self, file_path, workbook_data):
+        super().__init__()
+        self.file_path = file_path
+        self.workbook_data = workbook_data
+
+    def run(self):
+        try:
+            with pd.ExcelWriter(self.file_path, engine='openpyxl') as writer:
+                for sheet_name, df in self.workbook_data.items():
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+            self.finished_signal.emit(True, "Session saved successfully.")
+        except Exception as e:
+            self.finished_signal.emit(False, f"Failed to save session: {e}")
 
 class DataManager:
     """
@@ -89,26 +110,54 @@ class DataManager:
                 df.loc[test_case_index, "Average"] = average
 
             # Return the updated row (test case)
+            self.save_to_excel_async() # Auto-save
             return self.get_test_case(sheet_name, test_case_index)
 
         except Exception as e:
             print(f"Error saving time to in-memory DataFrame: {e}")
             return None
 
-    def save_notes(self, sheet_name, test_case_index, notes, build_info):
-        """Saves notes and the current build info for a specific test case."""
-        try:
-            df = self.get_sheet_data(sheet_name)
-            if df.empty:
-                return None
+    def save_notes(self, sheet_name, test_case_index, notes):
+        """Saves notes to the Notes column."""
+        df = self.get_sheet_data(sheet_name)
+        if df.empty or not (0 <= test_case_index < len(df)):
+            return
 
-            df.loc[test_case_index, "Notes"] = notes
-            self.save_build_info(sheet_name, test_case_index, build_info)
-            return self.get_test_case(sheet_name, test_case_index)
+        # Check if 'Notes' column exists
+        if 'Notes' not in df.columns:
+            df['Notes'] = ''
 
-        except Exception as e:
-            print(f"Error saving notes to in-memory DataFrame: {e}")
-            return None
+        df.at[test_case_index, 'Notes'] = notes
+        self.workbook[sheet_name] = df
+        
+        # Auto-save after notes update
+        self.save_to_excel_async()
+
+    def save_baseline_results(self, sheet_name, test_case_index, baseline_data):
+        """Saves baseline results to the Baseline Results column.
+        
+        Args:
+            sheet_name: Name of the sheet
+            test_case_index: Index of the test case
+            baseline_data: Dict with keys 'iterations' (list of 5 times), 'average', 'build'
+        """
+        df = self.get_sheet_data(sheet_name)
+        if df.empty or not (0 <= test_case_index < len(df)):
+            return
+
+        # Check if 'Baseline Results' column exists, if not create it
+        if 'Baseline Results' not in df.columns:
+            df['Baseline Results'] = ''
+
+        # Format the result string
+        iterations_str = ', '.join([str(t) for t in baseline_data['iterations']])
+        result_string = f"Baseline - ({iterations_str} = {baseline_data['average']}), Build used - {baseline_data['build']}"
+        
+        df.at[test_case_index, 'Baseline Results'] = result_string
+        self.workbook[sheet_name] = df
+        
+        # Auto-save after baseline update
+        self.save_to_excel_async() # Auto-save
 
     def save_build_info(self, sheet_name, test_case_index, build_info):
         """Saves the build string to the 'Build' column for a specific test case."""
@@ -122,7 +171,7 @@ class DataManager:
             print(f"Error saving build info: {e}")
 
     def save_to_excel(self):
-        """Writes the entire in-memory workbook back to the Excel file."""
+        """Writes the entire in-memory workbook back to the Excel file (Blocking)."""
         if not self.workbook:
             print("Error: No workbook data to save.")
             return False, "No data to save."
@@ -134,6 +183,21 @@ class DataManager:
         except Exception as e:
             print(f"Error writing to Excel file: {e}")
             return False, f"Failed to save session: {e}"
+
+    def save_to_excel_async(self):
+        """
+        Starts a background thread to save the workbook data to Excel.
+        Returns the thread object so the caller can connect signals.
+        """
+        if not self.workbook:
+            return None
+
+        # Create a deep copy of the workbook data to ensure thread safety
+        # We copy each DataFrame in the dictionary
+        workbook_copy = {name: df.copy() for name, df in self.workbook.items()}
+
+        thread = SaveThread(self.file_path, workbook_copy)
+        return thread
 
     def get_all_results(self, sheet_name):
         """Retrieves results for all test cases from a sheet for the Results tab."""

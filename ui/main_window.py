@@ -230,7 +230,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         layout.addStretch()
 
         if self.back_to_launcher_callback:
-            back_btn = QPushButton("⬅️ Back to Launcher")
+            back_btn = QPushButton("Back to Launcher")
             back_btn.clicked.connect(self.back_to_launcher_callback)
             layout.addWidget(back_btn)
 
@@ -381,7 +381,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         results_layout = QVBoxLayout()
 
         controls_layout = QHBoxLayout()
-        self.compare_btn = QPushButton("⚖️ Compare Logs")
+        self.compare_btn = QPushButton("Compare Logs")
         self.compare_btn.clicked.connect(self.compare_logs)
         self.clear_comparison_btn = QPushButton("🗑️ Clear")
         self.clear_comparison_btn.clicked.connect(self.clear_comparison_fields)
@@ -396,7 +396,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         results_group.setLayout(results_layout)
         main_layout.addWidget(results_group)
 
-        self.tab_widget.addTab(self.comparison_tab, "⚖️ Comparison")
+        self.tab_widget.addTab(self.comparison_tab, "Comparison")
 
     def compare_logs(self):
         """Process and compare the two logs from the input boxes."""

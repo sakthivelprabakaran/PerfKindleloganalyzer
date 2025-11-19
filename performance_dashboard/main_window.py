@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QWidget, QStackedWidget, QVBoxLayout, QMessageBox
+from PyQt5.QtWidgets import QWidget, QStackedWidget, QVBoxLayout, QMessageBox, QFileDialog
 from .logic.state_manager import StateManager
 from .logic.data_manager import DataManager
 from .ui.launch_page import LauncherScreen
@@ -12,6 +12,7 @@ class MainWindow(QWidget):
         self.back_to_launcher_callback = back_to_launcher_callback
         self.state_manager = StateManager()
         self.data_manager = None  # Instantiated when a session starts
+        self.save_thread = None
 
         # Main layout for this container widget
         main_layout = QVBoxLayout(self)
@@ -33,7 +34,23 @@ class MainWindow(QWidget):
     def switch_to_dashboard(self, session_data):
         """Switches the view to the Execution Dashboard for the given session."""
         # First, ensure the session file exists or is created
-        if not os.path.exists(os.path.join(session_data['project_path'], session_data['file_name'])):
+        project_path = session_data.get('project_path')
+        
+        # Handle missing project_path (legacy sessions)
+        if not project_path:
+            QMessageBox.warning(self, "Missing Path", "The project folder path is missing for this session.\nPlease select the project folder.")
+            project_path = QFileDialog.getExistingDirectory(self, "Select Project Folder")
+            if not project_path:
+                return # User cancelled
+            
+            # Update session data and save
+            session_data['project_path'] = project_path
+            self.state_manager.set_current_session(session_data)
+            self.state_manager.update_current_session('project_path', project_path)
+
+        if not os.path.exists(os.path.join(project_path, session_data['file_name'])):
+            # Ensure project_path is set in session_data for create_session_file
+            session_data['project_path'] = project_path 
             success, message = DataManager.create_session_file(session_data)
             if not success:
                 QMessageBox.critical(self, "File Creation Error", message)
@@ -48,7 +65,7 @@ class MainWindow(QWidget):
             self.execution_dashboard.deleteLater()
 
         self.execution_dashboard = ExecutionDashboard(
-            self.state_manager, self.data_manager, self.switch_to_launcher
+            self.state_manager, self.data_manager, self.switch_to_launcher, self.switch_to_dashboard
         )
 
         self.stacked_widget.addWidget(self.execution_dashboard)
@@ -60,11 +77,11 @@ class MainWindow(QWidget):
     def switch_to_launcher(self):
         """Saves the session to Excel and switches the view back to the Launcher screen."""
         if self.data_manager:
-            success, message = self.data_manager.save_to_excel()
-            if success:
-                QMessageBox.information(self, "Success", message)
-            else:
-                QMessageBox.warning(self, "Save Error", message)
+            # Use async save to prevent UI freezing
+            self.save_thread = self.data_manager.save_to_excel_async()
+            if self.save_thread:
+                self.save_thread.finished_signal.connect(self.on_save_finished)
+                self.save_thread.start()
 
         self.launcher_screen.refresh_view()
         self.stacked_widget.setCurrentWidget(self.launcher_screen)
@@ -73,3 +90,10 @@ class MainWindow(QWidget):
             self.execution_dashboard.deleteLater()
             self.execution_dashboard = None
         self.data_manager = None
+
+    def on_save_finished(self, success, message):
+        """Handle the completion of the background save operation."""
+        if not success:
+            QMessageBox.warning(self, "Save Error", message)
+        # We could show a success message here, but it might pop up after the user is already doing something else.
+        # For now, silent success is better for UX, or maybe a status bar update in the launcher if we had one.

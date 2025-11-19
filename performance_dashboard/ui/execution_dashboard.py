@@ -6,7 +6,8 @@ import pandas as pd
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QGroupBox, QLabel, QPushButton,
     QTextEdit, QTableWidget, QTabWidget, QSplitter,
-    QTableWidgetItem, QHeaderView, QMessageBox, QFrame, QLineEdit, QComboBox, QCompleter, QScrollArea
+    QTableWidgetItem, QHeaderView, QMessageBox, QFrame, QLineEdit, QComboBox, QCompleter, QScrollArea,
+    QStatusBar, QGridLayout
 )
 from PyQt5.QtGui import QPainter, QFont
 from PyQt5.QtCore import Qt, QTimer, QTime, QStringListModel, QSize
@@ -64,18 +65,24 @@ class ExecutionDashboard(QWidget):
     """
     The main dashboard for test case execution, timing, and data entry.
     """
-    def __init__(self, state_manager, data_manager, return_to_launcher_callback):
+    def __init__(self, state_manager, data_manager, return_to_launcher_callback, switch_session_callback=None):
         super().__init__()
         self.state = state_manager
         self.data_manager = data_manager
         self.return_to_launcher = return_to_launcher_callback
+        self.switch_session_callback = switch_session_callback
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_timer_display)
         self.start_time = 0
         self.recorded_time = 0
         self.current_iteration = 1
-
+        self.iteration_times = []
+        
+        # Baseline tracking
+        self.baseline_mode = False
+        self.baseline_iterations = []
+        self.baseline_build = ""
         self.current_test_case = None
         self.total_test_cases = 0
         self.total_n_points = 0
@@ -103,6 +110,10 @@ class ExecutionDashboard(QWidget):
         main_splitter.addWidget(right_panel)
         main_splitter.setSizes([400, 1200])
 
+        # Status Bar
+        self.status_bar = QStatusBar()
+        main_layout.addWidget(self.status_bar)
+
     def create_left_panel(self):
         """Creates the left panel for timer controls and navigation, wrapped in a scroll area."""
         # This is the main widget that will contain all the controls.
@@ -111,25 +122,35 @@ class ExecutionDashboard(QWidget):
 
         # Session Info
         session_group = QGroupBox("📊 Session Info")
-        session_layout = QVBoxLayout(session_group)
-        self.session_info_label = QLabel("<b>File:</b> N/A")
+        session_layout = QGridLayout(session_group) # Use Grid Layout for compactness
+        
+        # Session Selector (Quick Switch)
+        self.session_selector = QComboBox()
+        self.session_selector.currentIndexChanged.connect(self.on_session_changed)
+        
         self.device_name_label = QLabel("<b>Device:</b> N/A")
         self.week_label = QLabel("<b>Week:</b> N/A")
         self.build_label = QLabel("<b>Build:</b> N/A")
+        
+        # Build Input
         build_layout = QHBoxLayout()
         self.current_build_input = QLineEdit()
         self.current_build_input.setPlaceholderText("Set current build...")
-        set_build_btn = QPushButton("Set Build")
+        set_build_btn = QPushButton("Set")
         set_build_btn.clicked.connect(self.set_current_build)
         build_layout.addWidget(self.current_build_input)
         build_layout.addWidget(set_build_btn)
+        
         self.total_n_points_label = QLabel("<b>Total N-Points: 0</b>")
-        session_layout.addWidget(self.session_info_label)
-        session_layout.addWidget(self.device_name_label)
-        session_layout.addWidget(self.week_label)
-        session_layout.addWidget(self.build_label)
-        session_layout.addLayout(build_layout)
-        session_layout.addWidget(self.total_n_points_label)
+
+        # Add widgets to grid
+        session_layout.addWidget(self.session_selector, 0, 0, 1, 2) # Span 2 columns
+        session_layout.addWidget(self.device_name_label, 1, 0)
+        session_layout.addWidget(self.week_label, 1, 1)
+        session_layout.addWidget(self.build_label, 2, 0)
+        session_layout.addLayout(build_layout, 2, 1)
+        session_layout.addWidget(self.total_n_points_label, 3, 0, 1, 2)
+        
         layout.addWidget(session_group)
 
         # Timer
@@ -144,6 +165,30 @@ class ExecutionDashboard(QWidget):
         timer_layout.addWidget(self.timer_display)
         timer_layout.addWidget(self.start_stop_btn)
         layout.addWidget(timer_group)
+        
+        # Baseline Activity
+        baseline_group = QGroupBox("🎯 Baseline Activity")
+        baseline_layout = QVBoxLayout(baseline_group)
+        
+        self.baseline_required_label = QLabel("")
+        self.baseline_required_label.setStyleSheet("color: orange; font-weight: bold;")
+        self.baseline_required_label.setVisible(False)
+        
+        self.baseline_mode_checkbox = QCheckBox("Enable Baseline Mode")
+        self.baseline_mode_checkbox.stateChanged.connect(self.toggle_baseline_mode)
+        self.baseline_mode_checkbox.setEnabled(False)
+        
+        baseline_build_layout = QHBoxLayout()
+        baseline_build_layout.addWidget(QLabel("Baseline Build:"))
+        self.baseline_build_input = QLineEdit()
+        self.baseline_build_input.setPlaceholderText("Enter baseline build...")
+        self.baseline_build_input.setEnabled(False)
+        baseline_build_layout.addWidget(self.baseline_build_input)
+        
+        baseline_layout.addWidget(self.baseline_required_label)
+        baseline_layout.addWidget(self.baseline_mode_checkbox)
+        baseline_layout.addLayout(baseline_build_layout)
+        layout.addWidget(baseline_group)
 
         # Iteration Management
         iteration_group = QGroupBox("🔄 Iteration Management")
@@ -170,9 +215,11 @@ class ExecutionDashboard(QWidget):
         nav_group = QGroupBox("Navigate")
         nav_layout = QVBoxLayout(nav_group)
         nav_buttons_layout = QHBoxLayout()
-        prev_btn = QPushButton("⬅️ Previous")
+        prev_btn = QPushButton("Previous")
+        prev_btn.setMinimumWidth(120)
         prev_btn.clicked.connect(self.navigate_previous)
-        next_btn = QPushButton("Next ➡️")
+        next_btn = QPushButton("Next")
+        next_btn.setMinimumWidth(120)
         next_btn.clicked.connect(self.navigate_next)
         nav_buttons_layout.addWidget(prev_btn)
         nav_buttons_layout.addWidget(next_btn)
@@ -215,10 +262,18 @@ class ExecutionDashboard(QWidget):
 
         layout.addStretch()
 
-        # Save and Return Button
-        save_return_btn = QPushButton("💾 Save & Return to Launcher")
+        # Save Buttons
+        save_layout = QHBoxLayout()
+        
+        save_btn = QPushButton("💾 Save")
+        save_btn.clicked.connect(self.save_session)
+        save_layout.addWidget(save_btn)
+
+        save_return_btn = QPushButton("💾 Save & Return")
         save_return_btn.clicked.connect(self.save_and_return)
-        layout.addWidget(save_return_btn)
+        save_layout.addWidget(save_return_btn)
+        
+        layout.addLayout(save_layout)
 
         # Create and configure the scroll area
         scroll_area = QScrollArea()
@@ -320,7 +375,21 @@ class ExecutionDashboard(QWidget):
         session_name = session_data.get('file_name', 'N/A')
         active_sheet = self.state.get_active_sheet()
 
-        self.session_info_label.setText(f"<b>File:</b> {session_name} ({active_sheet})")
+        # Populate Session Selector
+        self.session_selector.blockSignals(True)
+        self.session_selector.clear()
+        self.state.load_sessions() # Refresh session list
+        
+        current_index = 0
+        for i, session in enumerate(self.state.sessions):
+            display_text = f"{session.get('file_name')} ({session.get('priority')})"
+            self.session_selector.addItem(display_text, session.get('file_name'))
+            if session.get('file_name') == session_name:
+                current_index = i
+        
+        self.session_selector.setCurrentIndex(current_index)
+        self.session_selector.blockSignals(False)
+
         self.device_name_label.setText(f"<b>Device:</b> {session_data.get('device_name', 'N/A')}")
         self.week_label.setText(f"<b>Week:</b> {session_data.get('week', 'N/A')}")
         self.build_label.setText(f"<b>Build:</b> {session_data.get('build_details', 'N/A')}")
@@ -338,9 +407,13 @@ class ExecutionDashboard(QWidget):
         self.area_filter_combo.currentIndexChanged.connect(self.filter_by_area)
         self.search_combo.activated.connect(self.search_test_case)
 
-        # Initial load
-        self.apply_filters()
+        # Initial load - Resume from last saved index
+        last_index = self.state.get_current_test_case_index()
+        self.apply_filters(selected_index=last_index)
         self.update_results_tab()
+        
+        # Check for incomplete test cases
+        self.check_incomplete_test_cases(active_sheet)
 
     def load_test_case_by_index(self, index):
         """Loads a specific test case into the UI, saving previous notes first."""
@@ -353,6 +426,17 @@ class ExecutionDashboard(QWidget):
 
         if self.current_test_case is not None:
             self.state.update_current_session('current_test_case_index', index)
+            
+            # Check if baseline is required for this test case
+            baseline_required = str(self.current_test_case.get('Baseline', '')).strip().lower() == 'yes'
+            if baseline_required:
+                self.baseline_required_label.setText("⚠️ Baseline comparison required for this test case")
+                self.baseline_required_label.setVisible(True)
+                self.baseline_mode_checkbox.setEnabled(True)
+            else:
+                self.baseline_required_label.setVisible(False)
+                self.baseline_mode_checkbox.setEnabled(False)
+                self.baseline_mode_checkbox.setChecked(False)
 
             self.tc_id_label.setText(str(self.current_test_case.get("Test Case ID", "")))
             self.tc_name_label.setText(str(self.current_test_case.get("Test Case Name", "")))
@@ -366,6 +450,18 @@ class ExecutionDashboard(QWidget):
             self.reset_timer_and_iterations()
         else:
             QMessageBox.information(self, "End of List", "You have reached the end of the test cases for this sheet.")
+    
+    def toggle_baseline_mode(self, state):
+        """Toggles baseline mode on/off."""
+        self.baseline_mode = (state == 2)  # Qt.Checked = 2
+        self.baseline_build_input.setEnabled(self.baseline_mode)
+        
+        if self.baseline_mode:
+            self.baseline_iterations = []
+            self.baseline_build = ""
+            self.iteration_label.setText("Baseline Iteration: 1/5")
+        else:
+            self.iteration_label.setText(f"Iteration: {self.current_iteration}/5")
 
     def navigate_next(self):
         current_index = self.state.get_current_test_case_index()
@@ -379,25 +475,66 @@ class ExecutionDashboard(QWidget):
             self.save_notes() # Auto-save before navigating
             self.load_test_case_by_index(current_index - 1)
 
+    def format_and_display_time(self, elapsed):
+        """Formats the elapsed time and updates the display."""
+        minutes, seconds = divmod(elapsed, 60)
+        self.timer_display.setText(f"{int(minutes):02d}:{int(seconds):02d}.{int((seconds % 1) * 1000):03d}")
+
     def toggle_timer(self):
         if self.timer.isActive():
             self.timer.stop()
             self.recorded_time = time.perf_counter() - self.start_time
+            self.format_and_display_time(self.recorded_time) # Update display immediately with exact time
             self.start_stop_btn.setText("Start (Space)")
             self.confirm_iteration_btn.setEnabled(True)
+            self.timer_display.setStyleSheet("color: black;") # Reset color
         else:
             self.start_time = time.perf_counter()
             self.timer.start(10) # Update display every 10ms
             self.start_stop_btn.setText("Stop (Space)")
             self.confirm_iteration_btn.setEnabled(False)
+            self.timer_display.setStyleSheet("color: green;") # Visual feedback
 
     def update_timer_display(self):
         elapsed = time.perf_counter() - self.start_time
-        minutes, seconds = divmod(elapsed, 60)
-        self.timer_display.setText(f"{int(minutes):02d}:{int(seconds):02d}.{int((seconds % 1) * 1000):03d}")
+        self.format_and_display_time(elapsed)
 
     def confirm_iteration(self):
         """Saves the current time and moves to the next iteration."""
+        if self.baseline_mode:
+            # Baseline mode logic
+            if not self.baseline_build:
+                self.baseline_build = self.baseline_build_input.text().strip()
+                if not self.baseline_build:
+                    QMessageBox.warning(self, "Baseline Build Required", "Please enter a Baseline Build name.")
+                    return
+
+            self.baseline_iterations.append(float(f"{self.recorded_time:.3f}"))
+            current_baseline_iter = len(self.baseline_iterations)
+
+            if current_baseline_iter < 5:
+                self.iteration_label.setText(f"Baseline Iteration: {current_baseline_iter + 1}/5")
+                self.reset_timer_and_iterations()
+            else:
+                # All 5 baseline iterations recorded - calculate average
+                avg = sum(self.baseline_iterations) / 5
+                baseline_data = {
+                    'iterations': self.baseline_iterations,
+                    'average': f"{avg:.3f}",
+                    'build': self.baseline_build
+                }
+                self.data_manager.save_baseline_results(
+                    self.state.get_active_sheet(),
+                    self.state.get_current_test_case_index(),
+                    baseline_data
+                )
+                QMessageBox.information(self, "Baseline Complete", "All 5 baseline iterations recorded. You can now proceed with current build iterations.")
+                self.baseline_mode_checkbox.setChecked(False)  # Exit baseline mode
+                self.reset_timer_and_iterations()
+                self.update_results_tab()
+            return
+
+
         if self.current_iteration > 5:
             # This part remains as a safeguard, but the main notification is moved.
             QMessageBox.information(self, "Completed", "All iterations for this test case are complete.")
@@ -427,6 +564,7 @@ class ExecutionDashboard(QWidget):
 
         if was_final_iteration:
             self.update_total_n_points()
+            self.update_results_tab() # Ensure table is updated with the completed test case
             QMessageBox.information(self, "Completed", "All 5 iterations for this test case are complete. Navigating to the next test case.")
             self.navigate_next()
         else:
@@ -527,8 +665,26 @@ class ExecutionDashboard(QWidget):
     def save_and_return(self):
         """Saves final state and returns to the launcher screen."""
         self.save_notes() # Save any pending notes before returning
-        self.state.update_current_session('status', 'Completed') # Or some other status
+        
+        active_sheet = self.state.get_active_sheet()
+        if self.is_session_complete(active_sheet):
+            self.state.update_current_session('status', 'Completed')
+        else:
+            self.state.update_current_session('status', 'In Progress')
+            
         self.return_to_launcher()
+
+    def is_session_complete(self, sheet_name):
+        """Checks if all test cases in the sheet are complete."""
+        sheet_data = self.data_manager.get_sheet_data(sheet_name)
+        if sheet_data.empty:
+            return False
+
+        for index, row in sheet_data.iterrows():
+            is_complete = pd.notna(row.get('Average', '')) and str(row.get('Average', '')).strip() != ''
+            if not is_complete:
+                return False
+        return True
 
     def manual_result_edit(self, item):
         """Handles manual editing of iteration values in the results table."""
@@ -700,14 +856,65 @@ class ExecutionDashboard(QWidget):
             QMessageBox.warning(self, "Not Found", f"Test Case ID '{tc_id_str}' could not be found.")
             return
 
-        original_index = matching_rows.index[0]
+        original_index = int(matching_rows.index[0])
 
         # Now, find where this original_index is in our currently filtered list
+
         if original_index in self.filtered_indices:
             self.current_filtered_index = self.filtered_indices.index(original_index)
             self.load_test_case_by_index(original_index)
         else:
             QMessageBox.information(self, "Filter Active", "The selected test case is not in the current filtered view. Clear the filter to see it.")
+
+    def on_session_changed(self, index):
+        """Handles switching to a different session from the dropdown."""
+        if index < 0 or not self.switch_session_callback:
+            return
+
+        # Get the filename of the selected session
+        selected_filename = self.session_selector.itemData(index)
+        if not selected_filename:
+            return
+
+        # Find the session data
+        new_session_data = self.state.get_session_by_filename(selected_filename)
+        if not new_session_data:
+            return
+
+        # Save current session state before switching
+        self.save_notes()
+        active_sheet = self.state.get_active_sheet()
+        if self.is_session_complete(active_sheet):
+            self.state.update_current_session('status', 'Completed')
+        else:
+            self.state.update_current_session('status', 'In Progress')
+
+        # Switch to the new session
+        self.switch_session_callback(new_session_data)
+
+    def check_incomplete_test_cases(self, sheet_name):
+        """Checks for test cases that have started but are not complete."""
+        sheet_data = self.data_manager.get_sheet_data(sheet_name)
+        if sheet_data.empty:
+            return
+
+        incomplete_cases = []
+        for index, row in sheet_data.iterrows():
+            # Check if Iteration1 has data but Average is empty (meaning not all 5 are done)
+            has_started = pd.notna(row.get('Iteration1', '')) and str(row.get('Iteration1', '')).strip() != ''
+            is_complete = pd.notna(row.get('Average', '')) and str(row.get('Average', '')).strip() != ''
+            
+            if has_started and not is_complete:
+                tc_id = row.get('Test Case ID', f"Row {index+1}")
+                incomplete_cases.append(str(tc_id))
+
+        if incomplete_cases:
+            msg = "The following test cases are incomplete (started but not finished):\n\n"
+            msg += "\n".join(incomplete_cases[:10]) # Show max 10
+            if len(incomplete_cases) > 10:
+                msg += f"\n...and {len(incomplete_cases) - 10} more."
+            msg += "\n\nPlease complete them."
+            QMessageBox.warning(self, "Incomplete Test Cases", msg)
 
     def jump_to_test_case(self):
         """Jumps to a specific test case number (1-based index)."""
@@ -748,3 +955,23 @@ class ExecutionDashboard(QWidget):
                 QMessageBox.information(self, "Success", "Test case results have been cleared.")
             else:
                 QMessageBox.warning(self, "Error", "Could not clear test case results.")
+
+    def save_session(self):
+        """Saves the current session to disk in the background."""
+        self.save_notes() # Ensure notes are saved to memory first
+        
+        self.status_bar.showMessage("Saving...")
+        self.save_thread = self.data_manager.save_to_excel_async()
+        if self.save_thread:
+            self.save_thread.finished_signal.connect(self.on_save_finished)
+            self.save_thread.start()
+        else:
+            self.status_bar.showMessage("Nothing to save.", 3000)
+
+    def on_save_finished(self, success, message):
+        """Handle save completion."""
+        if success:
+            self.status_bar.showMessage("Saved", 3000) # Show for 3 seconds
+        else:
+            self.status_bar.showMessage(f"Error: {message}")
+            QMessageBox.warning(self, "Save Error", message)

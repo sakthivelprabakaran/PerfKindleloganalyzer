@@ -105,6 +105,7 @@ class LauncherScreen(QWidget):
         self.session_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.session_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.session_table.setSortingEnabled(True)
+        self.session_table.cellDoubleClicked.connect(self.open_selected_session)
         layout.addWidget(self.session_table)
 
         # Buttons Layout
@@ -119,7 +120,7 @@ class LauncherScreen(QWidget):
         layout.addLayout(buttons_layout)
 
         if self.back_to_launcher_callback:
-            back_btn = QPushButton("⬅️ Back to Main Launcher")
+            back_btn = QPushButton("Back to Main Launcher")
             back_btn.clicked.connect(self.back_to_launcher_callback)
             layout.addWidget(back_btn)
 

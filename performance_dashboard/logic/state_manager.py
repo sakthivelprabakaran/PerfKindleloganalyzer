@@ -1,5 +1,15 @@
 import json
 import os
+import numpy as np
+
+class CustomJSONEncoder(json.JSONEncoder):
+    """Custom JSON Encoder to handle numpy types."""
+    def default(self, obj):
+        if isinstance(obj, (np.integer, np.floating)):
+            return int(obj) if isinstance(obj, np.integer) else float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
 
 class StateManager:
     """Manages the state of the Performance Execution Dashboard."""
@@ -23,9 +33,8 @@ class StateManager:
         """Saves the list of sessions to a JSON file."""
         try:
             with open(self.session_file_path, 'w') as f:
-                # Use a custom encoder if it has been set, otherwise use default
-                encoder = getattr(self, 'json_encoder', None)
-                json.dump(self.sessions, f, indent=4, cls=encoder)
+                # Use CustomJSONEncoder to handle numpy types safely
+                json.dump(self.sessions, f, indent=4, cls=CustomJSONEncoder)
         except IOError as e:
             print(f"Error saving sessions: {e}")
 
@@ -38,6 +47,7 @@ class StateManager:
             "week": week,
             "build_details": build_details,
             "priority": priority,
+            "active_sheet": priority,
             "file_name": session_file_name,
             "status": "In Progress",
             "current_test_case_index": 0,
