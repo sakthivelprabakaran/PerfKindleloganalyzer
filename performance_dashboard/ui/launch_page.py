@@ -11,10 +11,11 @@ class LauncherScreen(QWidget):
     The initial screen for the Performance Execution Dashboard.
     Provides options to create a new session or open a saved one.
     """
-    def __init__(self, state_manager, switch_to_dashboard_callback, back_to_launcher_callback=None):
+    def __init__(self, state_manager, switch_to_dashboard_callback, open_audit_callback, back_to_launcher_callback=None):
         super().__init__()
         self.state = state_manager
         self.switch_to_dashboard = switch_to_dashboard_callback
+        self.open_audit_callback = open_audit_callback
         self.back_to_launcher_callback = back_to_launcher_callback
         self.init_ui()
         self.load_priorities()
@@ -25,9 +26,24 @@ class LauncherScreen(QWidget):
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(20, 20, 20, 20)
 
-        # Left Panel: New Session Creation
+        # Left Column Layout
+        left_column = QVBoxLayout()
+        
+        # New Session Creation
         left_panel = self.create_left_panel()
-        main_layout.addWidget(left_panel, 1) # 50% width
+        left_column.addWidget(left_panel)
+        
+        # Tools Section
+        tools_group = QGroupBox("Tools")
+        tools_layout = QVBoxLayout(tools_group)
+        audit_btn = QPushButton("📊 Audit & Report")
+        audit_btn.setStyleSheet("font-size: 14px; padding: 8px;")
+        audit_btn.clicked.connect(self.open_audit_callback)
+        tools_layout.addWidget(audit_btn)
+        left_column.addWidget(tools_group)
+        
+        left_column.addStretch()
+        main_layout.addLayout(left_column, 1) # 50% width
 
         # Right Panel: Saved Sessions
         right_panel = self.create_right_panel()

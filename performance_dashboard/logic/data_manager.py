@@ -117,11 +117,11 @@ class DataManager:
             print(f"Error saving time to in-memory DataFrame: {e}")
             return None
 
-    def save_notes(self, sheet_name, test_case_index, notes):
-        """Saves notes to the Notes column."""
+    def save_notes(self, sheet_name, test_case_index, notes, build_info=None):
+        """Saves notes to the Notes column and optionally updates build info."""
         df = self.get_sheet_data(sheet_name)
         if df.empty or not (0 <= test_case_index < len(df)):
-            return
+            return None
 
         # Check if 'Notes' column exists
         if 'Notes' not in df.columns:
@@ -130,8 +130,13 @@ class DataManager:
         df.at[test_case_index, 'Notes'] = notes
         self.workbook[sheet_name] = df
         
+        if build_info:
+            self.save_build_info(sheet_name, test_case_index, build_info)
+        
         # Auto-save after notes update
         self.save_to_excel_async()
+        
+        return self.get_test_case(sheet_name, test_case_index)
 
     def save_baseline_results(self, sheet_name, test_case_index, baseline_data):
         """Saves baseline results to the Baseline Results column.
@@ -186,18 +191,20 @@ class DataManager:
 
     def save_to_excel_async(self):
         """
-        Starts a background thread to save the workbook data to Excel.
-        Returns the thread object so the caller can connect signals.
+        Saves the workbook data to Excel synchronously.
+        Changed from async to avoid thread destruction issues.
         """
         if not self.workbook:
             return None
 
-        # Create a deep copy of the workbook data to ensure thread safety
-        # We copy each DataFrame in the dictionary
-        workbook_copy = {name: df.copy() for name, df in self.workbook.items()}
-
-        thread = SaveThread(self.file_path, workbook_copy)
-        return thread
+        try:
+            with pd.ExcelWriter(self.file_path, engine='openpyxl') as writer:
+                for sheet_name, df in self.workbook.items():
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+        except Exception as e:
+            print(f"Error saving Excel file: {e}")
+        
+        return None
 
     def get_all_results(self, sheet_name):
         """Retrieves results for all test cases from a sheet for the Results tab."""
@@ -205,7 +212,7 @@ class DataManager:
         if not sheet_data.empty:
             results_columns = [
                 "Test Case Name", "Iteration1", "Iteration2", "Iteration3",
-                "Iteration4", "Iteration5", "Average", "Notes"
+                "Iteration4", "Iteration5", "Average", "Baseline Results", "Notes"
             ]
             # Ensure all required columns exist, fill missing with ''
             for col in results_columns:

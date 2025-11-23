@@ -6,10 +6,12 @@ class UniversalLauncher(QWidget):
     """
     A central launcher screen to choose between the available applications.
     """
-    def __init__(self, launch_log_analyzer_callback, launch_exec_dashboard_callback, toggle_dark_mode_callback):
+    def __init__(self, launch_log_analyzer_callback, launch_exec_dashboard_callback, launch_audit_report_callback, launch_task_assignment_callback, toggle_dark_mode_callback):
         super().__init__()
         self.launch_log_analyzer = launch_log_analyzer_callback
         self.launch_exec_dashboard = launch_exec_dashboard_callback
+        self.launch_audit_report = launch_audit_report_callback
+        self.launch_task_assignment = launch_task_assignment_callback
         self.toggle_dark_mode = toggle_dark_mode_callback
 
         self.init_ui()
@@ -54,6 +56,29 @@ class UniversalLauncher(QWidget):
         exec_dashboard_btn.setMinimumSize(400, 100)
         exec_dashboard_btn.clicked.connect(self.launch_exec_dashboard)
         buttons_layout.addWidget(exec_dashboard_btn)
+
+        # Button to launch Audit & Report
+        audit_btn = QPushButton("Launch Audit & Report")
+        audit_btn.setFont(QFont("Arial", 16))
+        audit_btn.setMinimumSize(400, 100)
+        audit_btn.clicked.connect(self.launch_audit_report)
+        buttons_layout.addWidget(audit_btn)
+
+        # Button to launch Task Assignment Dashboard (Admin)
+        task_assignment_btn = QPushButton("Task Assignment Dashboard (Admin)")
+        task_assignment_btn.setFont(QFont("Arial", 16))
+        task_assignment_btn.setMinimumSize(400, 100)
+        task_assignment_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #FF5722;
+                color: white;
+            }
+            QPushButton:hover {
+                background-color: #E64A19;
+            }
+        """)
+        task_assignment_btn.clicked.connect(self.launch_task_assignment)
+        buttons_layout.addWidget(task_assignment_btn)
 
         main_layout.addLayout(buttons_layout)
         main_layout.addStretch(2)

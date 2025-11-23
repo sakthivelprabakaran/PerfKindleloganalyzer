@@ -3,6 +3,7 @@ from .logic.state_manager import StateManager
 from .logic.data_manager import DataManager
 from .ui.launch_page import LauncherScreen
 from .ui.execution_dashboard import ExecutionDashboard
+from .ui.audit_window import AuditWindow
 import os
 
 class MainWindow(QWidget):
@@ -25,11 +26,23 @@ class MainWindow(QWidget):
         self.launcher_screen = LauncherScreen(
             self.state_manager,
             self.switch_to_dashboard,
+            self.switch_to_audit,
             self.back_to_launcher_callback
         )
         self.execution_dashboard = None  # Created when needed
+        self.audit_window = None # Created when needed
 
         self.stacked_widget.addWidget(self.launcher_screen)
+
+    def switch_to_audit(self):
+        """Switches the view to the Audit Window."""
+        if self.audit_window:
+            self.stacked_widget.removeWidget(self.audit_window)
+            self.audit_window.deleteLater()
+            
+        self.audit_window = AuditWindow(self.switch_to_launcher)
+        self.stacked_widget.addWidget(self.audit_window)
+        self.stacked_widget.setCurrentWidget(self.audit_window)
 
     def switch_to_dashboard(self, session_data):
         """Switches the view to the Execution Dashboard for the given session."""

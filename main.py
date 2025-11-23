@@ -7,6 +7,8 @@ from PyQt5.QtCore import Qt
 from ui.universal_launcher import UniversalLauncher
 from ui.main_window import FinalKindleLogAnalyzer
 from performance_dashboard.main_window import MainWindow as PerformanceDashboard
+from performance_dashboard.ui.audit_window import AuditWindow
+from performance_dashboard.ui.task_assignment_window import TaskAssignmentWindow
 
 class ApplicationContainer(QMainWindow):
     """
@@ -27,15 +29,21 @@ class ApplicationContainer(QMainWindow):
         self.universal_launcher = UniversalLauncher(
             self.launch_log_analyzer,
             self.launch_exec_dashboard,
+            self.launch_audit_report,
+            self.launch_task_assignment,
             self.toggle_dark_mode
         )
         self.log_analyzer = FinalKindleLogAnalyzer(back_to_launcher_callback=self.back_to_launcher)
         self.exec_dashboard = PerformanceDashboard(back_to_launcher_callback=self.back_to_launcher)
+        self.audit_window = AuditWindow(return_callback=self.back_to_launcher)
+        self.task_assignment_window = TaskAssignmentWindow()
 
         # Add them to the stack
         self.stacked_widget.addWidget(self.universal_launcher)
         self.stacked_widget.addWidget(self.log_analyzer)
         self.stacked_widget.addWidget(self.exec_dashboard)
+        self.stacked_widget.addWidget(self.audit_window)
+        self.stacked_widget.addWidget(self.task_assignment_window)
 
         # Set the initial screen
         self.stacked_widget.setCurrentWidget(self.universal_launcher)
@@ -50,6 +58,16 @@ class ApplicationContainer(QMainWindow):
         """Switches the view to the Performance Execution Dashboard."""
         self.setWindowTitle("Performance Execution Dashboard")
         self.stacked_widget.setCurrentWidget(self.exec_dashboard)
+
+    def launch_audit_report(self):
+        """Switches the view to the Audit & Report Window."""
+        self.setWindowTitle("Audit & Report Generation")
+        self.stacked_widget.setCurrentWidget(self.audit_window)
+
+    def launch_task_assignment(self):
+        """Switches the view to the Task Assignment Dashboard."""
+        self.setWindowTitle("Task Assignment Dashboard (Admin)")
+        self.stacked_widget.setCurrentWidget(self.task_assignment_window)
 
     def back_to_launcher(self):
         """Switches the view back to the universal launcher."""

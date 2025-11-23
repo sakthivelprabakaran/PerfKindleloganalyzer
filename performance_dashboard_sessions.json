@@ -8,6 +8,18 @@
         "active_sheet": "P1",
         "file_name": "P1_kindle_6_Week_21.xlsx",
         "status": "In Progress",
-        "current_test_case_index": 0
+        "current_test_case_index": 1,
+        "current_build": "19.1"
+    },
+    {
+        "project_path": "/Users/sakthivelprabakaran/Documents/WEEK_46",
+        "device_name": "Scribe1",
+        "week": "31",
+        "build_details": "19.1_98",
+        "priority": "P1",
+        "active_sheet": "P1",
+        "file_name": "P1_Scribe1_Week_31.xlsx",
+        "status": "In Progress",
+        "current_test_case_index": 3
     }
 ]

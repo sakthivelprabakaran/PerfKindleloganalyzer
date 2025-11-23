@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QGroupBox, QLabel, QPushButton,
     QTextEdit, QTableWidget, QTabWidget, QSplitter,
     QTableWidgetItem, QHeaderView, QMessageBox, QFrame, QLineEdit, QComboBox, QCompleter, QScrollArea,
-    QStatusBar, QGridLayout
+    QStatusBar, QGridLayout, QCheckBox
 )
 from PyQt5.QtGui import QPainter, QFont
 from PyQt5.QtCore import Qt, QTimer, QTime, QStringListModel, QSize
@@ -61,6 +61,8 @@ class DynamicHeightTextEdit(QTextEdit):
         # The textChanged signal will fire, which calls self.update_geometry
 
 
+from performance_dashboard.logic.network_manager import NetworkManager
+
 class ExecutionDashboard(QWidget):
     """
     The main dashboard for test case execution, timing, and data entry.
@@ -78,6 +80,10 @@ class ExecutionDashboard(QWidget):
         self.recorded_time = 0
         self.current_iteration = 1
         self.iteration_times = []
+        
+        # Network Manager for Live Audit - created lazily
+        self.network_manager = None
+        self.live_mode = False
         
         # Baseline tracking
         self.baseline_mode = False
@@ -143,6 +149,16 @@ class ExecutionDashboard(QWidget):
         
         self.total_n_points_label = QLabel("<b>Total N-Points: 0</b>")
 
+        # Live Mode Toggle
+        live_layout = QHBoxLayout()
+        self.live_chk = QCheckBox("Live Audit Mode")
+        self.live_chk.stateChanged.connect(self.toggle_live_mode)
+        self.server_ip_input = QLineEdit("http://localhost:8000")
+        self.server_ip_input.setPlaceholderText("Server URL")
+        self.server_ip_input.setEnabled(False)
+        live_layout.addWidget(self.live_chk)
+        live_layout.addWidget(self.server_ip_input)
+
         # Add widgets to grid
         session_layout.addWidget(self.session_selector, 0, 0, 1, 2) # Span 2 columns
         session_layout.addWidget(self.device_name_label, 1, 0)
@@ -150,6 +166,7 @@ class ExecutionDashboard(QWidget):
         session_layout.addWidget(self.build_label, 2, 0)
         session_layout.addLayout(build_layout, 2, 1)
         session_layout.addWidget(self.total_n_points_label, 3, 0, 1, 2)
+        session_layout.addLayout(live_layout, 4, 0, 1, 2)
         
         layout.addWidget(session_group)
 
@@ -167,16 +184,13 @@ class ExecutionDashboard(QWidget):
         layout.addWidget(timer_group)
         
         # Baseline Activity
-        baseline_group = QGroupBox("🎯 Baseline Activity")
-        baseline_layout = QVBoxLayout(baseline_group)
-        
-        self.baseline_required_label = QLabel("")
-        self.baseline_required_label.setStyleSheet("color: orange; font-weight: bold;")
-        self.baseline_required_label.setVisible(False)
+        self.baseline_group = QGroupBox("🎯 Baseline Activity")
+        baseline_layout = QVBoxLayout(self.baseline_group)
         
         self.baseline_mode_checkbox = QCheckBox("Enable Baseline Mode")
         self.baseline_mode_checkbox.stateChanged.connect(self.toggle_baseline_mode)
         self.baseline_mode_checkbox.setEnabled(False)
+        self.baseline_mode_checkbox.setVisible(False) # Hidden by default, auto-triggered
         
         baseline_build_layout = QHBoxLayout()
         baseline_build_layout.addWidget(QLabel("Baseline Build:"))
@@ -185,15 +199,20 @@ class ExecutionDashboard(QWidget):
         self.baseline_build_input.setEnabled(False)
         baseline_build_layout.addWidget(self.baseline_build_input)
         
-        baseline_layout.addWidget(self.baseline_required_label)
         baseline_layout.addWidget(self.baseline_mode_checkbox)
         baseline_layout.addLayout(baseline_build_layout)
-        layout.addWidget(baseline_group)
+        layout.addWidget(self.baseline_group)
+        self.baseline_group.setVisible(False) # Hidden by default
 
         # Iteration Management
         iteration_group = QGroupBox("🔄 Iteration Management")
         iteration_layout = QVBoxLayout(iteration_group)
         self.iteration_indicators_layout = QHBoxLayout()
+        
+        self.iteration_label = QLabel("Iteration: 1/5")
+        self.iteration_label.setAlignment(Qt.AlignCenter)
+        iteration_layout.addWidget(self.iteration_label)
+        
         self.iteration_indicators = []
         for _ in range(5):
             indicator = CircleIndicator()
@@ -428,15 +447,12 @@ class ExecutionDashboard(QWidget):
             self.state.update_current_session('current_test_case_index', index)
             
             # Check if baseline is required for this test case
-            baseline_required = str(self.current_test_case.get('Baseline', '')).strip().lower() == 'yes'
-            if baseline_required:
-                self.baseline_required_label.setText("⚠️ Baseline comparison required for this test case")
-                self.baseline_required_label.setVisible(True)
-                self.baseline_mode_checkbox.setEnabled(True)
-            else:
-                self.baseline_required_label.setVisible(False)
-                self.baseline_mode_checkbox.setEnabled(False)
-                self.baseline_mode_checkbox.setChecked(False)
+            self.baseline_required = str(self.current_test_case.get('Baseline', '')).strip().lower() == 'yes'
+            
+            # Reset baseline UI state
+            self.baseline_group.setVisible(False)
+            self.baseline_mode_checkbox.setChecked(False)
+            self.baseline_mode_checkbox.setEnabled(False)
 
             self.tc_id_label.setText(str(self.current_test_case.get("Test Case ID", "")))
             self.tc_name_label.setText(str(self.current_test_case.get("Test Case Name", "")))
@@ -460,8 +476,10 @@ class ExecutionDashboard(QWidget):
             self.baseline_iterations = []
             self.baseline_build = ""
             self.iteration_label.setText("Baseline Iteration: 1/5")
+            self.baseline_group.setVisible(True)
         else:
             self.iteration_label.setText(f"Iteration: {self.current_iteration}/5")
+            self.baseline_group.setVisible(False)
 
     def navigate_next(self):
         current_index = self.state.get_current_test_case_index()
@@ -565,12 +583,31 @@ class ExecutionDashboard(QWidget):
         if was_final_iteration:
             self.update_total_n_points()
             self.update_results_tab() # Ensure table is updated with the completed test case
+
+            # Check for Baseline Requirement
+            if self.baseline_required:
+                QMessageBox.information(self, "Baseline Required", "Baseline execution is required for this test case. Switching to Baseline Mode.")
+                self.baseline_group.setVisible(True)
+                self.baseline_mode_checkbox.setEnabled(True)
+                self.baseline_mode_checkbox.setChecked(True) # Triggers toggle_baseline_mode
+                self.reset_timer_and_iterations()
+                return
+
+            # Auto-navigate after completion
+            self.reset_timer_and_iterations()
             QMessageBox.information(self, "Completed", "All 5 iterations for this test case are complete. Navigating to the next test case.")
             self.navigate_next()
         else:
             self.reset_timer_and_iterations()
             self.update_results_tab()
             self.update_current_results_display()
+            
+        # Live Audit Submission
+        if self.live_mode and self.current_test_case is not None:
+            tc_id = self.current_test_case.get("Test Case ID", "")
+            tc_name = self.current_test_case.get("Test Case Name", "")
+            # Submit the just-recorded time
+            self.network_manager.submit_result(tc_id, tc_name, formatted_time)
 
     def reset_timer_and_iterations(self):
         """Resets the timer and iteration UI elements."""
@@ -599,6 +636,10 @@ class ExecutionDashboard(QWidget):
 
     def update_iteration_indicators(self):
         """Updates the visual indicators for the current iteration."""
+        if not self.baseline_mode:
+            display_iter = min(self.current_iteration, 5)
+            self.iteration_label.setText(f"Iteration: {display_iter}/5")
+
         for i, indicator in enumerate(self.iteration_indicators):
             # Iterations are 1-based, index is 0-based
             indicator.set_active(i < self.current_iteration - 1)
@@ -649,7 +690,7 @@ class ExecutionDashboard(QWidget):
 
                     # Make 'Test Case Name' and 'Average' columns read-only
                     column_header = results_df.columns[j]
-                    if column_header in ["Test Case Name", "Average"]:
+                    if column_header in ["Test Case Name", "Average", "Baseline Results"]:
                         table_item.setFlags(table_item.flags() & ~Qt.ItemIsEditable)
                     # Make Notes column editable
                     elif column_header == "Notes":
@@ -665,6 +706,10 @@ class ExecutionDashboard(QWidget):
     def save_and_return(self):
         """Saves final state and returns to the launcher screen."""
         self.save_notes() # Save any pending notes before returning
+        
+        # Cleanup network manager
+        if self.network_manager:
+            self.network_manager.stop_polling()
         
         active_sheet = self.state.get_active_sheet()
         if self.is_session_complete(active_sheet):
@@ -773,6 +818,44 @@ class ExecutionDashboard(QWidget):
             self.navigate_next()
         else:
             super().keyPressEvent(event)
+
+    def toggle_live_mode(self, state):
+        self.live_mode = (state == 2)
+        self.server_ip_input.setEnabled(not self.live_mode) # Disable editing while active
+        
+        if self.live_mode:
+            # Create NetworkManager lazily only when needed
+            if self.network_manager is None:
+                from performance_dashboard.logic.network_manager import NetworkManager
+                self.network_manager = NetworkManager()
+                self.network_manager.notification_received.connect(self.show_audit_notification)
+            
+            url = self.server_ip_input.text().strip()
+            self.network_manager.server_url = url
+            self.network_manager.start_polling()
+            self.status_bar.showMessage(f"Live Mode Active: Connected to {url}")
+        else:
+            if self.network_manager:
+                self.network_manager.stop_polling()
+            self.status_bar.showMessage("Live Mode Disabled")
+
+    def show_audit_notification(self, title, message):
+        """Shows a popup notification from the Auditor."""
+        QMessageBox.warning(self, title, message)
+
+    def __del__(self):
+        """Destructor to ensure cleanup."""
+        try:
+            if hasattr(self, 'network_manager') and self.network_manager:
+                self.network_manager.stop_polling()
+        except:
+            pass
+
+    def closeEvent(self, event):
+        """Cleanup when the dashboard is closed."""
+        if self.network_manager:
+            self.network_manager.stop_polling()
+        event.accept()
 
     def populate_advanced_nav(self, sheet_name, identifiers=None):
         """Populates the filter and search dropdowns with data from the current sheet."""
