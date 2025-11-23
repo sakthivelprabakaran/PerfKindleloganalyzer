@@ -26,11 +26,12 @@ class CommentDialog(QDialog):
         return self.comment_input.text()
 
 class LiveAuditWindow(QWidget):
-    def __init__(self):
+    def __init__(self, suite_filter=None):
         super().__init__()
         self.setWindowTitle("Live Audit Monitor")
         self.resize(1000, 600)
         
+        self.suite_filter = suite_filter  # e.g., "P0", "P1", etc.
         self.network_manager = NetworkManager()
         self.network_manager.server_url = "http://localhost:8000" # Default
         
@@ -97,8 +98,15 @@ class LiveAuditWindow(QWidget):
         self.populate_table(data)
 
     def populate_table(self, data):
-        self.table.setRowCount(len(data))
-        for i, row in enumerate(data):
+        # Filter data if suite_filter is set
+        if self.suite_filter:
+            # Filter by test case ID prefix (e.g., "P0" filters "P03", "P01", etc.)
+            filtered_data = [row for row in data if row['test_case_id'].startswith(self.suite_filter)]
+        else:
+            filtered_data = data
+        
+        self.table.setRowCount(len(filtered_data))
+        for i, row in enumerate(filtered_data):
             # Create items with explicit text color
             id_item = QTableWidgetItem(str(row['test_case_id']))
             id_item.setForeground(QColor("black"))

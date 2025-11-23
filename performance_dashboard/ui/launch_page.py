@@ -55,6 +55,41 @@ class LauncherScreen(QWidget):
         layout = QVBoxLayout()
         panel.setLayout(layout)
 
+        # Username Input (NEW)
+        layout.addWidget(QLabel("Your Username:"))
+        self.username_input = QLineEdit()
+        self.username_input.setPlaceholderText("Enter your username...")
+        self.username_input.textChanged.connect(self.on_username_changed)
+        layout.addWidget(self.username_input)
+
+        # Server URL Input (NEW)
+        server_layout = QHBoxLayout()
+        server_layout.addWidget(QLabel("Server:"))
+        self.server_url_input = QLineEdit("http://localhost:8000")
+        self.server_url_input.setFixedWidth(200)
+       
+        server_layout.addWidget(self.server_url_input)
+        layout.addLayout(server_layout)
+
+        # My Assigned Tasks (NEW)
+        layout.addWidget(QLabel("My Assigned Tasks:"))
+        task_selection_layout = QHBoxLayout()
+        self.assigned_tasks_combo = QComboBox()
+        self.assigned_tasks_combo.addItem("-- Select Task or Create Manually --")
+        self.assigned_tasks_combo.currentIndexChanged.connect(self.on_task_selected)
+        task_selection_layout.addWidget(self.assigned_tasks_combo)
+        
+        refresh_tasks_btn = QPushButton("🔄")
+        refresh_tasks_btn.setFixedWidth(40)
+        refresh_tasks_btn.setToolTip("Refresh my assigned tasks")
+        refresh_tasks_btn.clicked.connect(self.fetch_assigned_tasks)
+        task_selection_layout.addWidget(refresh_tasks_btn)
+        layout.addLayout(task_selection_layout)
+
+        # Separator
+        separator = QLabel("─" * 40)
+        layout.addWidget(separator)
+
         # Project Path
         path_layout = QHBoxLayout()
         self.project_path_input = QLineEdit()
@@ -64,18 +99,19 @@ class LauncherScreen(QWidget):
         browse_btn = QPushButton("Browse...")
         browse_btn.clicked.connect(self.select_project_path)
         path_layout.addWidget(browse_btn)
+        layout.addWidget(QLabel("Project Path:"))
         layout.addLayout(path_layout)
 
         # Device Name
         layout.addWidget(QLabel("Device Name:"))
         self.device_name_input = QLineEdit()
-        self.device_name_input.setPlaceholderText("e.g., Kindle_Scribe_1")
+        self.device_name_input.setPlaceholderText("e.g., Kindle Paperwhite")
         layout.addWidget(self.device_name_input)
 
         # Week
-        layout.addWidget(QLabel("Week (1-52):"))
+        layout.addWidget(QLabel("Week:"))
         self.week_combo = QComboBox()
-        self.week_combo.addItems([str(i) for i in range(1, 53)])
+        self.week_combo.addItems([f"Week {i}" for i in range(1, 53)])
         layout.addWidget(self.week_combo)
 
         # Build Details
@@ -96,6 +132,10 @@ class LauncherScreen(QWidget):
         self.start_execution_btn.setStyleSheet("font-size: 16px; padding: 10px;")
         self.start_execution_btn.clicked.connect(self.start_new_session)
         layout.addWidget(self.start_execution_btn)
+
+        # Store task data for later use
+        self.current_task_data = None
+        self.tasks_data = {}  # Initialize empty dict to prevent AttributeError
 
         return panel
 
@@ -180,6 +220,12 @@ class LauncherScreen(QWidget):
             project_path, device_name, week, build_details, priority
         )
 
+        # Add task assignment data if a task was selected
+        if self.current_task_data:
+            session_data['task_assignment'] = self.current_task_data
+            session_data['username'] = self.username_input.text().strip()
+            session_data['server_url'] = self.server_url_input.text().strip()
+
         # The data manager will be instantiated in the main window
         # For now, we just switch views
         self.switch_to_dashboard(session_data)
@@ -261,3 +307,74 @@ class LauncherScreen(QWidget):
             QMessageBox.warning(self, "Error", f"Could not load priorities from template: {e}")
             # Add default priorities as a fallback
             self.priority_combo.addItems(["P0", "P1", "P2"])
+
+    def on_username_changed(self):
+        """Called when username changes - auto-fetch tasks"""
+        if len(self.username_input.text()) >= 3:  # Minimum 3 characters
+            self.fetch_assigned_tasks()
+
+    def fetch_assigned_tasks(self):
+        """Fetches assigned tasks for the current username from server"""
+        username = self.username_input.text().strip()
+        server_url = self.server_url_input.text().strip()
+        
+        if not username:
+            return
+        
+        try:
+            import requests
+            response = requests.get(f"{server_url}/my_tasks/{username}", timeout=3)
+            if response.status_code == 200:
+                tasks = response.json()
+                
+                # Clear and repopulate dropdown
+                self.assigned_tasks_combo.clear()
+                self.assigned_tasks_combo.addItem("-- Select Task or Create Manually --")
+                
+                # Store tasks for later use
+                self.tasks_data = {}
+                
+                for task in tasks:
+                    # Format display: "Kindle P0 → Alice (Auditor)"
+                    display_text = f"{task['project']} {task['suite']} → {task['auditor_username']} (Auditor)"
+                    self.assigned_tasks_combo.addItem(display_text)
+                    self.tasks_data[display_text] = task
+                    
+                if len(tasks) > 0:
+                    self.assigned_tasks_combo.setStyleSheet("background-color: #d4edda;")  # Green hint
+            else:
+                self.assigned_tasks_combo.clear()
+                self.assigned_tasks_combo.addItem("-- No tasks assigned --")
+        except Exception as e:
+            print(f"Error fetching tasks: {e}")
+            self.assigned_tasks_combo.clear()
+            self.assigned_tasks_combo.addItem("-- Server not available --")
+
+    def on_task_selected(self, index):
+        """Called when a task is selected from dropdown - auto-fill session details"""
+        if index == 0:  # "Select Task or Create Manually"
+            self.current_task_data = None
+            self.assigned_tasks_combo.setStyleSheet("")
+            return
+        
+        selected_text = self.assigned_tasks_combo.currentText()
+        if selected_text in self.tasks_data:
+            task = self.tasks_data[selected_text]
+            self.current_task_data = task
+            
+            # Auto-fill session fields from task
+            self.device_name_input.setText(task['project'])  # Use project as device
+            self.priority_combo.setCurrentText(task['suite'])  # P0, P1, etc.
+            
+            # Visual feedback
+            self.assigned_tasks_combo.setStyleSheet("background-color: #d1ecf1;")  # Blue - selected
+            
+            QMessageBox.information(
+                self, 
+                "Task Selected",
+                f"Auto-filled session from task assignment:\n\n"
+                f"Project: {task['project']}\n"
+                f"Suite: {task['suite']}\n"
+                f"Auditor: {task['auditor_username']}\n\n"
+                f"Live Audit Mode will be auto-enabled with {task['auditor_username']}."
+            )

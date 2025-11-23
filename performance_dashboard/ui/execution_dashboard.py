@@ -434,6 +434,38 @@ class ExecutionDashboard(QWidget):
         # Check for incomplete test cases
         self.check_incomplete_test_cases(active_sheet)
 
+        # Auto-enable Live Mode if task assignment exists (NEW)
+        if 'task_assignment' in session_data and session_data['task_assignment']:
+            task = session_data['task_assignment']
+            server_url = session_data.get('server_url', 'http://localhost:8000')
+            
+            # Set server URL
+            self.server_ip_input.setText(server_url)
+            
+            # Create network manager if not exists
+            if not self.network_manager:
+                executor_name = session_data.get('username', 'Executor')
+                self.network_manager = NetworkManager(server_url, executor_name)
+                self.network_manager.notification_received.connect(self.show_audit_notification)
+            
+            # Set executor name
+            if session_data.get('username'):
+                self.network_manager.executor_name = session_data['username']
+            
+            # Enable Live Mode
+            self.live_chk.setChecked(True)  # This will trigger toggle_live_mode
+            
+            # Show confirmation message
+            QMessageBox.information(
+                self,
+                "Live Mode Auto-Enabled",
+                f"Live Audit Mode has been automatically enabled.\n\n"
+                f"Task: {task['project']} {task['suite']}\n"
+                f"Auditor: {task['auditor_username']}\n"
+                f"Server: {server_url}\n\n"
+                f"Your test results will be sent to {task['auditor_username']} in real-time."
+            )
+
     def load_test_case_by_index(self, index):
         """Loads a specific test case into the UI, saving previous notes first."""
         # Auto-save notes from the previous test case before loading the new one.
@@ -596,18 +628,31 @@ class ExecutionDashboard(QWidget):
             # Auto-navigate after completion
             self.reset_timer_and_iterations()
             QMessageBox.information(self, "Completed", "All 5 iterations for this test case are complete. Navigating to the next test case.")
+            
+            # Live Audit Submission - ONLY submit average after all 5 iterations
+            if self.live_mode and self.current_test_case is not None:
+                tc_id = self.current_test_case.get("Test Case ID", "")
+                tc_name = self.current_test_case.get("Test Case Name", "")
+                
+                # Calculate average of all 5 iterations
+                iteration_values = []
+                for i in range(1, 6):
+                    val = self.current_test_case.get(f"Iteration {i}", None)
+                    if val is not None and val != "":
+                        try:
+                            iteration_values.append(float(val))
+                        except:
+                            pass
+                
+                if iteration_values:
+                    average_value = sum(iteration_values) / len(iteration_values)
+                    self.network_manager.submit_result(tc_id, tc_name, f"{average_value:.3f}")
+            
             self.navigate_next()
         else:
             self.reset_timer_and_iterations()
             self.update_results_tab()
             self.update_current_results_display()
-            
-        # Live Audit Submission
-        if self.live_mode and self.current_test_case is not None:
-            tc_id = self.current_test_case.get("Test Case ID", "")
-            tc_name = self.current_test_case.get("Test Case Name", "")
-            # Submit the just-recorded time
-            self.network_manager.submit_result(tc_id, tc_name, formatted_time)
 
     def reset_timer_and_iterations(self):
         """Resets the timer and iteration UI elements."""

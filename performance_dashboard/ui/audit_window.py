@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog, 
     QTableWidget, QTableWidgetItem, QHeaderView, QGroupBox, QMessageBox, QFrame,
-    QTabWidget, QRadioButton, QButtonGroup, QComboBox, QPlainTextEdit, QShortcut,
+    QTabWidget, QLineEdit, QRadioButton, QButtonGroup, QComboBox, QPlainTextEdit, QShortcut,
     QApplication, QCheckBox
 )
 from PyQt5.QtGui import QColor, QFont, QKeySequence
@@ -26,6 +26,11 @@ class AuditWindow(QWidget):
         self.single_file_path = ""
         self.report_df = pd.DataFrame()
         self.live_window = None # Keep reference
+        
+        # For My Assignments functionality
+        self.username = ""
+        self.server_url = "http://localhost:8000"
+        self.my_assignments = []
         
         self.init_ui()
 
@@ -55,6 +60,7 @@ class AuditWindow(QWidget):
         self.tabs = QTabWidget()
         self.tabs.addTab(self.create_file_import_tab(), "File Import")
         self.tabs.addTab(self.create_manual_input_tab(), "Manual Input / Paste")
+        self.tabs.addTab(self.create_my_assignments_tab(), "👤 My Assignments")
         layout.addWidget(self.tabs)
         
         # Summary Stats Area (Redesigned)
@@ -280,6 +286,42 @@ class AuditWindow(QWidget):
         
         return tab
 
+    def create_my_assignments_tab(self):
+        """Creates the My Assignments tab for auditors."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        
+        # Username and Server Input
+        input_layout = QHBoxLayout()
+        input_layout.addWidget(QLabel("Your Username:"))
+        self.auditor_username_input = QLineEdit()
+        self.auditor_username_input.setPlaceholderText("Enter your username...")
+        self.auditor_username_input.setFixedWidth(200)
+        input_layout.addWidget(self.auditor_username_input)
+        
+        input_layout.addWidget(QLabel("Server:"))
+        self.auditor_server_input = QLineEdit(self.server_url)
+        self.auditor_server_input.setFixedWidth(200)
+        input_layout.addWidget(self.auditor_server_input)
+        
+        fetch_btn = QPushButton("🔄 Fetch My Assignments")
+        fetch_btn.clicked.connect(self.fetch_my_assignments)
+        fetch_btn.setStyleSheet("background-color: #4CAF50; color: white; padding: 8px;")
+        input_layout.addWidget(fetch_btn)
+        input_layout.addStretch()
+        layout.addLayout(input_layout)
+        
+        # Assignments Table
+        self.assignments_table = QTableWidget()
+        self.assignments_table.setColumnCount(6)
+        self.assignments_table.setHorizontalHeaderLabels([
+            "Project", "Suite", "Executor", "BRD Status", "Actions", "Live Monitor"
+        ])
+        self.assignments_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        layout.addWidget(self.assignments_table)
+        
+        return tab
+
     def select_single_file(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select File", "", "Excel Files (*.xlsx)")
         if file_path:
@@ -463,7 +505,106 @@ class AuditWindow(QWidget):
                 self.report_df.to_excel(save_path, index=False)
                 QMessageBox.information(self, "Success", f"Report saved to {save_path}")
             except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to save report: {e}")
+                QMessageBox.critical(self, "Export Error", f"Failed to export report: {str(e)}")
+
+    def fetch_my_assignments(self):
+        """Fetches assigned audits for the current auditor from server."""
+        username = self.auditor_username_input.text().strip()
+        server_url = self.auditor_server_input.text().strip()
+        
+        if not username:
+            QMessageBox.warning(self, "Input Error", "Please enter your username.")
+            return
+        
+        try:
+            import requests
+            response = requests.get(f"{server_url}/my_audits/{username}", timeout=3)
+            if response.status_code == 200:
+                self.my_assignments = response.json()
+                self.populate_assignments_table()
+            else:
+                QMessageBox.warning(self, "Error", f"Failed to fetch assignments: {response.text}")
+        except Exception as e:
+            QMessageBox.critical(self, "Network Error", f"Could not connect to server: {e}")
+
+    def populate_assignments_table(self):
+        """Populates the assignments table with data."""
+        self.assignments_table.setRowCount(len(self.my_assignments))
+        
+        for i, assignment in enumerate(self.my_assignments):
+            # Project
+            project_item = QTableWidgetItem(assignment['project'])
+            project_item.setForeground(QColor("black"))
+            self.assignments_table.setItem(i, 0, project_item)
+            
+            # Suite
+            suite_item = QTableWidgetItem(assignment['suite'])
+            suite_item.setForeground(QColor("black"))
+            self.assignments_table.setItem(i, 1, suite_item)
+            
+            # Executor
+            executor_item = QTableWidgetItem(assignment['executor_username'])
+            executor_item.setForeground(QColor("black"))
+            self.assignments_table.setItem(i, 2, executor_item)
+            
+            # BRD Status (check if BRD exists)
+            # TODO: Query auditor_brds table to check status
+            status_item = QTableWidgetItem("Not Uploaded")
+            status_item.setForeground(QColor("#856404"))
+            status_item.setBackground(QColor("#fff3cd"))
+            self.assignments_table.setItem(i, 3, status_item)
+            
+            # Upload BRD Button
+            upload_btn = QPushButton("📤 Upload BRD")
+            upload_btn.clicked.connect(lambda checked, a=assignment: self.upload_brd(a))
+            upload_btn.setStyleSheet("padding: 5px; background-color: #007bff; color: white;")
+            self.assignments_table.setCellWidget(i, 4, upload_btn)
+            
+            # Live Monitor Button
+            monitor_btn = QPushButton("🔴 Monitor")
+            monitor_btn.clicked.connect(lambda checked, a=assignment: self.open_live_monitor_for_assignment(a))
+            monitor_btn.setStyleSheet("padding: 5px; background-color: #dc3545; color: white;")
+            self.assignments_table.setCellWidget(i, 5, monitor_btn)
+
+    def upload_brd(self, assignment):
+        """Handles BRD upload for a specific assignment."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, 
+            f"Upload BRD for {assignment['project']} {assignment['suite']}", 
+            "", 
+            "Excel Files (*.xlsx)"
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            # Read BRD file
+            df = pd.read_excel(file_path)
+            
+            # TODO: Send BRD data to server for storage in auditor_brds table
+            # For now, just show success
+            QMessageBox.information(
+                self,
+                "BRD Uploaded",
+                f"BRD uploaded successfully for:\n\n"
+                f"Project: {assignment['project']}\n"
+                f"Suite: {assignment['suite']}\n"
+                f"File: {file_path.split('/')[-1]}\n\n"
+                f"Server-side storage will be implemented next."
+            )
+            
+            # Refresh table to update status
+            self.fetch_my_assignments()
+        except Exception as e:
+            QMessageBox.critical(self, "Upload Error", f"Failed to upload BRD: {e}")
+
+    def open_live_monitor_for_assignment(self, assignment):
+        """Opens Live Monitor filtered for a specific assignment."""
+        suite_filter = assignment['suite']  # e.g., "P0", "P1", "P2"
+        self.live_window = LiveAuditWindow(suite_filter=suite_filter)
+        self.live_window.setWindowTitle(f"Live Monitor - {assignment['project']} {suite_filter}")
+        self.live_window.show()
 
     def open_live_monitor(self):
         if self.live_window is None:
