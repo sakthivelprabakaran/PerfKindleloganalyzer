@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                               QLineEdit, QPushButton, QMessageBox, QFrame)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QIcon
+from config import SERVER_URL, REQUEST_TIMEOUT, APP_NAME
 
 class LoginWindow(QWidget):
     """
@@ -13,12 +14,12 @@ class LoginWindow(QWidget):
     def __init__(self, on_login_success):
         super().__init__()
         self.on_login_success = on_login_success  # Callback with (username, role, full_name)
-        self.server_url = "http://localhost:8000"
+        self.server_url = SERVER_URL
         self.init_ui()
     
     def init_ui(self):
         """Initialize the login UI."""
-        self.setWindowTitle("Kindle Test Engineering Tools - Login")
+        self.setWindowTitle(f"{APP_NAME} - Login")
         self.setGeometry(100, 100, 500, 350)
         self.setStyleSheet("""
             QWidget {
@@ -181,7 +182,7 @@ class LoginWindow(QWidget):
             response = requests.post(
                 f"{self.server_url}/login",
                 json={"username": username, "password": password},
-                timeout=10
+                timeout=REQUEST_TIMEOUT
             )
             
             if response.status_code == 200:

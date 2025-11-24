@@ -11,38 +11,41 @@ import os
 import shutil
 import bcrypt
 
+# Import centralized configuration
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import (
+    SERVER_IP, SERVER_PORT, DB_NAME, DB_BACKUP_DIR, 
+    DB_BACKUP_RETENTION, DEFAULT_PASSWORD
+)
+
 # --- Auto-Backup Function ---
 def backup_database():
-    """Create automatic backup of database on server startup."""
-    db_file = "live_audit.db"
-    backup_dir = "backups"
-    
-    if not os.path.exists(db_file):
+    """Create a timestamped backup of the database on startup."""
+    if not os.path.exists(DB_NAME):
         print("ℹ️  No existing database to backup.")
         return
-    
-    # Create backups directory
-    os.makedirs(backup_dir, exist_ok=True)
-    
-    # Create backup with timestamp
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    backup_file = os.path.join(backup_dir, f"live_audit_backup_{timestamp}.db")
+
+    os.makedirs(DB_BACKUP_DIR, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_filename = f"live_audit_backup_{timestamp}.db"
+    backup_path = os.path.join(DB_BACKUP_DIR, backup_filename)
     
     try:
-        shutil.copy2(db_file, backup_file)
-        print(f"✅ Database backed up: {backup_file}")
+        shutil.copy2(DB_NAME, backup_path)
+        print(f"✅ Database backed up: {backup_path}")
         
-        # Keep only last 30 backups
-        backups = sorted([f for f in os.listdir(backup_dir) if f.endswith('.db')])
-        if len(backups) > 30:
-            for old_backup in backups[:-30]:
-                os.remove(os.path.join(backup_dir, old_backup))
-                print(f"🗑️  Removed old backup: {old_backup}")
+        # Cleanup old backups (keep last N)
+        backups = sorted([os.path.join(DB_BACKUP_DIR, f) for f in os.listdir(DB_BACKUP_DIR) if f.endswith('.db')])
+        while len(backups) > DB_BACKUP_RETENTION:
+            old_backup_to_remove = backups.pop(0)
+            os.remove(old_backup_to_remove)
+            print(f"🗑️  Removed old backup: {os.path.basename(old_backup_to_remove)}")
     except Exception as e:
         print(f"⚠️  Backup failed: {e}")
 
 # --- Database Setup ---
-SQLALCHEMY_DATABASE_URL = "sqlite:///./live_audit.db"
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_NAME}"
 
 # Enable WAL mode and connection pooling for better concurrency
 engine = create_engine(
@@ -160,7 +163,7 @@ class UserCreate(BaseModel):
     username: str
     full_name: str
     role: str
-    password: str = "ChangeMe123!"  # Default password for new users
+    password: str = DEFAULT_PASSWORD  # Default password from config
 
 class UserLogin(BaseModel):
     username: str
@@ -615,5 +618,17 @@ def check_brd_status(project: str, suite: str, db: Session = Depends(get_db)):
     return {"exists": False}
 
 if __name__ == "__main__":
-    # Run on 0.0.0.0 to be accessible on LAN
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Check if port is already in use
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    result = sock.connect_ex(('localhost', SERVER_PORT))
+    sock.close()
+    
+    if result == 0:
+        print(f"\n❌ ERROR: Port {SERVER_PORT} is already in use!")
+        print("Please stop the existing server or change the port.")
+        print(f"To kill the process using port {SERVER_PORT}, run: lsof -ti:{SERVER_PORT} | xargs kill -9\n")
+        exit(1)
+
+    print("🚀 Starting Live Audit Server...")
+    uvicorn.run(app, host="0.0.0.0", port=SERVER_PORT)

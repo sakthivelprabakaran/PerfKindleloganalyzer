@@ -4,16 +4,22 @@ Comprehensive API Test Suite for Live Audit Server
 Tests all endpoints, BRD validation, username normalization, and error handling
 """
 
+import sys
+import os
+
+# Add parent directory to path to import config
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import requests
 import json
-import os
 import time
 from datetime import datetime
 import openpyxl
 from openpyxl import Workbook
+from config import SERVER_URL, DEFAULT_PASSWORD, REQUEST_TIMEOUT
 
 # Configuration
-SERVER_URL = "http://localhost:8000"
+# SERVER_URL imported from config
 TEST_RESULTS = []
 
 class Colors:
@@ -65,8 +71,8 @@ def test_login():
     try:
         response = requests.post(f"{SERVER_URL}/login", json={
             "username": "ADMIN_USER",
-            "password": "ChangeMe123!"  # Default password
-        }, timeout=5)
+            "password": DEFAULT_PASSWORD  # Default password from config
+        }, timeout=REQUEST_TIMEOUT)
         success = response.status_code == 200 and response.json().get("success")
         log_test("Login (Valid)", success, "Authenticated successfully")
     except Exception as e:

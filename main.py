@@ -10,6 +10,7 @@ from ui.main_window import FinalKindleLogAnalyzer
 from performance_dashboard.main_window import MainWindow as PerformanceDashboard
 from performance_dashboard.ui.audit_window import AuditWindow
 from performance_dashboard.ui.task_assignment_window import TaskAssignmentWindow
+from config import APP_NAME, APP_ICON_PATH
 
 class ApplicationContainer(QMainWindow):
     """
@@ -17,7 +18,7 @@ class ApplicationContainer(QMainWindow):
     """
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Kindle Test Engineering Tools")
+        self.setWindowTitle(APP_NAME)
         self.setGeometry(50, 50, 1600, 1000)
 
         self.set_app_icon()
@@ -115,23 +116,24 @@ class ApplicationContainer(QMainWindow):
             with open(stylesheet_path, "r") as f:
                 self.setStyleSheet(f.read())
 
-    def set_app_icon(self):
-        """Sets the application icon based on the platform."""
-        try:
-            # Determine the correct icon file based on platform
-            if sys.platform == "darwin":  # macOS
-                icon_path = os.path.join("assets", "icons", "Mac.icns")
-            elif sys.platform == "win32":  # Windows
-                icon_path = os.path.join("assets", "icons", "win.ico")
-            else:  # Linux and others
-                icon_path = os.path.join("assets", "icons", "win.ico")
+    # Removed set_app_icon method as icon is now set globally in __main__
+    # def set_app_icon(self):
+    #     """Sets the application icon based on the platform."""
+    #     try:
+    #         # Determine the correct icon file based on platform
+    #         if sys.platform == "darwin":  # macOS
+    #             icon_path = os.path.join("assets", "icons", "Mac.icns")
+    #         elif sys.platform == "win32":  # Windows
+    #             icon_path = os.path.join("assets", "icons", "win.ico")
+    #         else:  # Linux and others
+    #             icon_path = os.path.join("assets", "icons", "win.ico")
             
-            if os.path.exists(icon_path):
-                self.setWindowIcon(QIcon(icon_path))
-            else:
-                print(f"Warning: Icon file not found at {icon_path}")
-        except Exception as e:
-            print(f"Error setting app icon: {e}")
+    #         if os.path.exists(icon_path):
+    #             self.setWindowIcon(QIcon(icon_path))
+    #         else:
+    #             print(f"Warning: Icon file not found at {icon_path}")
+    #     except Exception as e:
+    #         print(f"Error setting app icon: {e}")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
@@ -142,18 +144,11 @@ if __name__ == '__main__':
     
     # Set application icon (for Dock/taskbar)
     try:
-        if sys.platform == "darwin":  # macOS
-            icon_path = os.path.join("assets", "icons", "Mac.icns")
-        elif sys.platform == "win32":  # Windows
-            icon_path = os.path.join("assets", "icons", "win.ico")
-        else:  # Linux
-            icon_path = os.path.join("assets", "icons", "win.ico")
-        
-        if os.path.exists(icon_path):
-            app.setWindowIcon(QIcon(icon_path))
-            print(f"✓ Icon loaded: {icon_path}")
+        if os.path.exists(APP_ICON_PATH):
+            app.setWindowIcon(QIcon(APP_ICON_PATH))
+            print(f"✓ Icon loaded: {APP_ICON_PATH}")
         else:
-            print(f"⚠ Icon not found: {icon_path}")
+            print(f"⚠ Icon not found: {APP_ICON_PATH}")
     except Exception as e:
         print(f"✗ Error loading icon: {e}")
 

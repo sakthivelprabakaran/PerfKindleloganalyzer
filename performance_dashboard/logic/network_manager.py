@@ -1,18 +1,24 @@
 import requests
+import threading
+import time
 from PyQt5.QtCore import QObject, pyqtSignal, QTimer
+from config import SERVER_URL, REQUEST_TIMEOUT, POLL_INTERVAL_MS
 
 class NetworkManager(QObject):
     """
     Handles communication with the Live Audit Server.
-    Uses QTimer for polling to avoid thread issues.
     """
-    notification_received = pyqtSignal(str, str) # title, message
+    # Signals for UI updates
+    connection_status = pyqtSignal(bool, str)  # connected, message
+    notification_received = pyqtSignal(dict)   # notification data
 
-    def __init__(self, server_url="http://localhost:8000", executor_name="Executor"):
+    def __init__(self):
         super().__init__()
-        self.server_url = server_url
-        self.executor_name = executor_name
-        self.timeout = 10  # 10 second timeout for all requests
+        self.server_url = SERVER_URL
+        self.is_connected = False
+        self.stop_polling = False
+        self.poll_thread = None
+        self.timeout = REQUEST_TIMEOUT  # Use centralized timeout
         
         # Use QTimer instead of background thread
         self.poll_timer = QTimer()
