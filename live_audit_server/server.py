@@ -19,6 +19,58 @@ from config import (
     DB_BACKUP_RETENTION, DEFAULT_PASSWORD
 )
 
+import time
+import asyncio
+import sqlite3
+from functools import wraps
+from sqlalchemy.exc import OperationalError
+
+# --- Retry Logic Decorator (Sync) ---
+def retry_on_db_lock(max_retries=5, base_delay=0.1):
+    """
+    Decorator to retry database operations when SQLite is locked (Sync).
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            retries = 0
+            while True:
+                try:
+                    return func(*args, **kwargs)
+                except OperationalError as e:
+                    if "database is locked" in str(e) and retries < max_retries:
+                        retries += 1
+                        delay = base_delay * (2 ** (retries - 1))
+                        print(f"⚠️ Database locked (Sync). Retrying {retries}/{max_retries} in {delay:.2f}s...")
+                        time.sleep(delay)
+                    else:
+                        raise e
+        return wrapper
+    return decorator
+
+# --- Retry Logic Decorator (Async) ---
+def retry_on_db_lock_async(max_retries=5, base_delay=0.1):
+    """
+    Decorator to retry database operations when SQLite is locked (Async).
+    """
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            retries = 0
+            while True:
+                try:
+                    return await func(*args, **kwargs)
+                except OperationalError as e:
+                    if "database is locked" in str(e) and retries < max_retries:
+                        retries += 1
+                        delay = base_delay * (2 ** (retries - 1))
+                        print(f"⚠️ Database locked (Async). Retrying {retries}/{max_retries} in {delay:.2f}s...")
+                        await asyncio.sleep(delay)
+                    else:
+                        raise e
+        return wrapper
+    return decorator
+
 # --- Auto-Backup Function ---
 def backup_database():
     """Create a timestamped backup of the database on startup."""
@@ -292,6 +344,7 @@ def login(credentials: UserLogin, db: Session = Depends(get_db)):
     )
 
 @app.post("/submit_result", response_model=ResultResponse)
+@retry_on_db_lock()
 def submit_result(result: ResultCreate, db: Session = Depends(get_db)):
     """Executor submits a new test result with auto-comparison against BRD."""
     
@@ -429,6 +482,7 @@ def get_all_assignments(db: Session = Depends(get_db)):
 
 # User Management Endpoints
 @app.post("/users", response_model=UserResponse)
+@retry_on_db_lock()
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
     """Admin creates a new user with hashed password."""
     # Normalize username before saving
@@ -485,6 +539,7 @@ def get_auditors(db: Session = Depends(get_db)):
 
 # Project Management Endpoints
 @app.post("/projects", response_model=ProjectResponse)
+@retry_on_db_lock()
 def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
     """Admin creates a new project."""
     # Check if project already exists
@@ -541,11 +596,12 @@ def validate_brd_format(file_path: str, suite: str) -> tuple[bool, str]:
         return False, f"Error reading Excel file: {str(e)}"
 
 @app.post("/upload_brd")
+@retry_on_db_lock_async()
 async def upload_brd(
     file: UploadFile = File(...),
-    auditor_username: str = Form(""),
-    project: str = Form(""),
-    suite: str = Form(""),
+    auditor_username: str = Form(...),
+    project: str = Form(...),
+    suite: str = Form(...),
     db: Session = Depends(get_db)
 ):
     """Auditor uploads BRD Excel file for a specific suite with validation."""
