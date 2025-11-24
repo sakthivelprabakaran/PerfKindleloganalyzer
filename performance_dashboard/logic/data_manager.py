@@ -191,20 +191,15 @@ class DataManager:
 
     def save_to_excel_async(self):
         """
-        Saves the workbook data to Excel synchronously.
-        Changed from async to avoid thread destruction issues.
+        Saves the workbook data to Excel in a background thread.
+        Returns a SaveThread object or None if nothing to save.
         """
         if not self.workbook:
+            print("DataManager: No workbook data loaded, nothing to save")
             return None
 
-        try:
-            with pd.ExcelWriter(self.file_path, engine='openpyxl') as writer:
-                for sheet_name, df in self.workbook.items():
-                    df.to_excel(writer, sheet_name=sheet_name, index=False)
-        except Exception as e:
-            print(f"Error saving Excel file: {e}")
-        
-        return None
+        save_thread = SaveThread(self.file_path, self.workbook)
+        return save_thread
 
     def get_all_results(self, sheet_name):
         """Retrieves results for all test cases from a sheet for the Results tab."""

@@ -41,3 +41,8 @@ POLL_INTERVAL_MS = 2000  # Milliseconds
 DB_NAME = "live_audit.db"
 DB_BACKUP_DIR = "backups"
 DB_BACKUP_RETENTION = 30  # Keep last 30 backups
+
+# --- Security Settings ---
+SECRET_KEY = "super-secret-key-change-this-in-production"  # In prod, load from env var
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 hours

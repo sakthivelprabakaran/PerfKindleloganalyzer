@@ -64,7 +64,7 @@
         "active_sheet": "P0",
         "file_name": "P0_kindle_Week_Week 1.xlsx",
         "status": "In Progress",
-        "current_test_case_index": 2,
+        "current_test_case_index": 3,
         "task_assignment": {
             "id": 1,
             "project": "J19.1",
@@ -75,6 +75,119 @@
             "created_at": "2025-11-23T22:00:06.108282"
         },
         "username": "sakthimx",
+        "server_url": "http://localhost:8000"
+    },
+    {
+        "project_path": "/Users/sakthivelprabakaran/Documents/WEEK_46",
+        "device_name": "TestProject",
+        "week": "Week 25",
+        "build_details": "19.5",
+        "priority": "P0",
+        "active_sheet": "P0",
+        "file_name": "P0_TestProject_Week_Week 25.xlsx",
+        "status": "In Progress",
+        "current_test_case_index": 2,
+        "task_assignment": {
+            "id": 3,
+            "project": "TestProject",
+            "suite": "P0",
+            "executor_username": "testexecutor1",
+            "auditor_username": "testauditor1",
+            "status": "Assigned",
+            "created_at": "2025-11-24T13:24:15.418847"
+        },
+        "username": "testexecutor1",
+        "server_url": "http://localhost:8000"
+    },
+    {
+        "project_path": "/Users/sakthivelprabakaran/Documents/WEEK_46",
+        "device_name": "J19.1",
+        "week": "Week 1",
+        "build_details": "Nivedhatest",
+        "priority": "P0",
+        "active_sheet": "P0",
+        "file_name": "P0_J19.1_Week_Week 1.xlsx",
+        "status": "In Progress",
+        "current_test_case_index": 3,
+        "task_assignment": {
+            "id": 4,
+            "project": "J19.1",
+            "suite": "P0",
+            "executor_username": "nivedhab",
+            "auditor_username": "sivaln",
+            "status": "Assigned",
+            "created_at": "2025-11-24T15:41:04.158583"
+        },
+        "username": "nivedhab",
+        "server_url": "http://localhost:8000",
+        "current_build": "19.5"
+    },
+    {
+        "project_path": "/Users/sakthivelprabakaran/Documents/WEEK_46",
+        "device_name": "calvaods",
+        "week": "Week 1",
+        "build_details": "j19.108",
+        "priority": "P0",
+        "active_sheet": "P0",
+        "file_name": "P0_calvaods_Week_Week 1.xlsx",
+        "status": "In Progress",
+        "current_test_case_index": 2,
+        "task_assignment": {
+            "id": 1,
+            "project": "J19.1",
+            "suite": "P0",
+            "executor_username": "nivedhab",
+            "auditor_username": "sakthimx",
+            "status": "Assigned",
+            "created_at": "2025-11-24T15:49:54.900608"
+        },
+        "username": "nivedhab",
+        "server_url": "http://localhost:8000",
+        "current_build": "19.108"
+    },
+    {
+        "project_path": "/Users/sakthivelprabakaran/Documents/WEEK_46",
+        "device_name": "J19.1_1000",
+        "week": "Week 1",
+        "build_details": "calv",
+        "priority": "P0",
+        "active_sheet": "P0",
+        "file_name": "P0_J19.1_1000_Week_Week 1.xlsx",
+        "status": "Completed",
+        "current_test_case_index": 3,
+        "task_assignment": {
+            "id": 1,
+            "project": "J19.1",
+            "suite": "P0",
+            "executor_username": "nivedhab",
+            "auditor_username": "sakthimx",
+            "status": "Assigned",
+            "created_at": "2025-11-24T15:49:54.900608"
+        },
+        "username": "nivedhab",
+        "server_url": "http://localhost:8000",
+        "current_build": "19.5"
+    },
+    {
+        "project_path": "/Users/sakthivelprabakaran/Documents/WEEK_46",
+        "device_name": "gibson",
+        "week": "Week 1",
+        "build_details": "9.09",
+        "priority": "P0",
+        "active_sheet": "P0",
+        "file_name": "P0_gibson_Week_Week 1.xlsx",
+        "status": "In Progress",
+        "current_test_case_index": 2,
+        "task_assignment": {
+            "id": 1,
+            "project": "J19.1",
+            "suite": "P0",
+            "executor_username": "nivedhab",
+            "auditor_username": "sakthimx",
+            "status": "Assigned",
+            "created_at": "2025-11-24T15:49:54.900608"
+        },
+        "username": "nivedhab",
         "server_url": "http://localhost:8000"
     }
 ]

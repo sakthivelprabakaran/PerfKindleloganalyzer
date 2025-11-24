@@ -26,14 +26,16 @@ class CommentDialog(QDialog):
         return self.comment_input.text()
 
 class LiveAuditWindow(QWidget):
-    def __init__(self, suite_filter=None):
+    def __init__(self, suite_filter=None, auth_token=None):
         super().__init__()
         self.setWindowTitle("Live Audit Monitor")
         self.resize(1000, 600)
         
         self.suite_filter = suite_filter  # e.g., "P0", "P1", etc.
-        self.network_manager = NetworkManager()
-        self.network_manager.server_url = "http://localhost:8000" # Default
+        self.auth_token = auth_token
+        
+        # Network Manager - created lazily when needed
+        self.network_manager = None
         
         self.init_ui()
         
@@ -85,8 +87,23 @@ class LiveAuditWindow(QWidget):
         legend_layout.addWidget(lbl_rejected)
         legend_layout.addStretch()
         layout.addLayout(legend_layout)
+    
+    def ensure_network_manager(self):
+        """Lazily initialize NetworkManager when needed."""
+        if self.network_manager is None:
+            from performance_dashboard.logic.network_manager import NetworkManager
+            self.network_manager = NetworkManager(token=self.auth_token)
+            # Connect dashboard_update signal for real-time updates
+            if hasattr(self.network_manager, 'dashboard_update'):
+                self.network_manager.dashboard_update.connect(self.on_new_result)
+
+    def on_new_result(self, result_data):
+        """Handle real-time result updates via WebSocket."""
+        # Refresh the table to show new result
+        self.refresh_data()
 
     def connect_to_server(self):
+        self.ensure_network_manager()
         url = self.server_input.text().strip()
         if url:
             self.network_manager.server_url = url
@@ -94,6 +111,7 @@ class LiveAuditWindow(QWidget):
             QMessageBox.information(self, "Connected", f"Polling {url}...")
 
     def refresh_data(self):
+        self.ensure_network_manager()
         data = self.network_manager.fetch_dashboard_data()
         self.populate_table(data)
 
@@ -187,16 +205,43 @@ class LiveAuditWindow(QWidget):
                 if row['status'] == "Rejected":
                     comment_item = QTableWidgetItem(f"Reason: {row['auditor_comment']}")
                     comment_item.setForeground(QColor("black"))
-                    self.table.setItem(i, 7, comment_item)
 
     def approve_result(self, row_data):
+        self.ensure_network_manager()
         self.network_manager.update_status(row_data['id'], "Approved", "Looks good")
         self.refresh_data()
 
     def reject_result(self, row_data):
+        self.ensure_network_manager()
         dialog = CommentDialog(self)
         if dialog.exec_() == QDialog.Accepted:
             comment = dialog.get_comment()
             if comment:
                 self.network_manager.update_status(row_data['id'], "Rejected", comment)
                 self.refresh_data()
+
+    def approve_selected(self):
+        """Approves the selected result."""
+        selected_row = self.table.currentRow()
+        if selected_row < 0:
+            return
+        
+        self.ensure_network_manager()
+        row_data = self.table_data[selected_row]
+        self.network_manager.update_status(row_data['id'], "Approved", "Looks good")
+        self.refresh_data()
+
+    def reject_selected(self):
+        """Rejects the selected result with a comment."""
+        selected_row = self.table.currentRow()
+        if selected_row < 0:
+            return
+        
+        self.ensure_network_manager()
+        from PyQt5.QtWidgets import QInputDialog
+        comment, ok = QInputDialog.getText(self, "Reject Result", "Enter rejection comment:")
+        
+        if ok and comment:
+            row_data = self.table_data[selected_row]
+            self.network_manager.update_status(row_data['id'], "Rejected", comment)
+            self.refresh_data()

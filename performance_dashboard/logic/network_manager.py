@@ -1,90 +1,245 @@
 import requests
+import socketio
 import threading
 import time
-from PyQt5.QtCore import QObject, pyqtSignal, QTimer
-from config import SERVER_URL, REQUEST_TIMEOUT, POLL_INTERVAL_MS
+from datetime import datetime
+from PyQt5.QtCore import QObject, pyqtSignal, QTimer, QMetaObject, Qt
+from config import SERVER_URL, REQUEST_TIMEOUT
 
 class NetworkManager(QObject):
     """
-    Handles communication with the Live Audit Server.
+    Handles communication with the Live Audit Server using WebSockets.
+    Includes automatic reconnection with exponential backoff.
     """
     # Signals for UI updates
-    connection_status = pyqtSignal(bool, str)  # connected, message
+    connection_status = pyqtSignal(str, str)  # state, message
     notification_received = pyqtSignal(dict)   # notification data
+    dashboard_update = pyqtSignal(dict)        # new result data
+    _schedule_reconnect_signal = pyqtSignal(int)  # Internal signal for thread-safe reconnection
 
-    def __init__(self):
+    # Connection states
+    STATE_DISCONNECTED = "disconnected"
+    STATE_CONNECTING = "connecting"
+    STATE_CONNECTED = "connected"
+    STATE_FAILED = "failed"
+
+    def __init__(self, executor_name=None, token=None):
         super().__init__()
         self.server_url = SERVER_URL
-        self.is_connected = False
-        self.stop_polling = False
-        self.poll_thread = None
-        self.timeout = REQUEST_TIMEOUT  # Use centralized timeout
+        self.executor_name = executor_name
+        self.token = token
+        self.headers = {"Authorization": f"Bearer {token}"} if token else {}
+        self.timeout = REQUEST_TIMEOUT
         
-        # Use QTimer instead of background thread
-        self.poll_timer = QTimer()
-        self.poll_timer.timeout.connect(self._poll_notifications)
-        self.poll_timer.setInterval(10000) # 10 seconds
+        # Connection state management
+        self.connection_state = self.STATE_DISCONNECTED
+        self.reconnect_attempts = 0
+        self.max_reconnect_attempts = 5
+        self.reconnect_delay = 1  # Start with 1 second
+        self.max_reconnect_delay = 30  # Max 30 seconds
         
-        self.seen_notification_ids = set() # Track which notifications we've already shown
+        # Socket.IO Client
+        self.sio = socketio.Client(reconnection=False)  # We'll handle reconnection manually
+        
+        # Setup Event Handlers
+        self.sio.on('connect', self.on_connect)
+        self.sio.on('disconnect', self.on_disconnect)
+        self.sio.on('connect_error', self.on_connect_error)
+        self.sio.on('status_update', self.on_status_update)
+        self.sio.on('new_result', self.on_new_result)
+        
+        # Reconnection timer
+        self.reconnect_timer = QTimer()
+        self.reconnect_timer.setSingleShot(True)
+        self.reconnect_timer.timeout.connect(self._attempt_reconnect)
+        
+        # Connect internal signal for thread-safe timer scheduling
+        self._schedule_reconnect_signal.connect(self._start_reconnect_timer)
+        
+        # Start connection in a separate thread to avoid blocking UI
+        self.connect_thread = threading.Thread(target=self.connect_socket, daemon=True)
+        self.connect_thread.start()
 
-    def start_polling(self):
-        """Starts the polling timer."""
-        if not self.poll_timer.isActive():
-            self.poll_timer.start()
+    def log(self, message):
+        """Log message with timestamp."""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        print(f"[{timestamp}] NetworkManager: {message}")
+
+    def connect_socket(self):
+        """Establishes WebSocket connection."""
+        if self.connection_state == self.STATE_CONNECTING:
+            return  # Already connecting
+            
+        self.connection_state = self.STATE_CONNECTING
+        self.connection_status.emit(self.STATE_CONNECTING, "Connecting to server...")
+        self.log("Attempting to connect...")
+        
+        try:
+            # Pass token in auth dictionary
+            auth_data = {'token': self.token} if self.token else {}
+            self.sio.connect(self.server_url, auth=auth_data, wait_timeout=10)
+        except Exception as e:
+            self.log(f"Connection failed: {e}")
+            self.on_connect_error(str(e))
+
+    def on_connect(self):
+        """Called when WebSocket connects successfully."""
+        self.log("✅ Connected successfully")
+        self.connection_state = self.STATE_CONNECTED
+        self.reconnect_attempts = 0  # Reset counter on successful connection
+        self.reconnect_delay = 1  # Reset delay
+        self.connection_status.emit(self.STATE_CONNECTED, "Connected")
+
+    def on_disconnect(self):
+        """Called when WebSocket disconnects."""
+        self.log("❌ Disconnected from server")
+        
+        if self.connection_state == self.STATE_CONNECTED:
+            # Unexpected disconnect - attempt to reconnect
+            self.connection_state = self.STATE_DISCONNECTED
+            self.connection_status.emit(self.STATE_DISCONNECTED, "Connection lost")
+            self.schedule_reconnect()
+        else:
+            self.connection_state = self.STATE_DISCONNECTED
+            self.connection_status.emit(self.STATE_DISCONNECTED, "Disconnected")
+
+    def on_connect_error(self, error):
+        """Handle connection errors."""
+        self.log(f"⚠️ Connection error: {error}")
+        self.connection_state = self.STATE_DISCONNECTED
+        
+        if self.reconnect_attempts < self.max_reconnect_attempts:
+            self.connection_status.emit(self.STATE_DISCONNECTED, f"Connection failed - retrying...")
+            self.schedule_reconnect()
+        else:
+            self.connection_state = self.STATE_FAILED
+            self.connection_status.emit(
+                self.STATE_FAILED, 
+                f"Connection failed after {self.max_reconnect_attempts} attempts. Please check server and try again."
+            )
+            self.log(f"❌ Max reconnection attempts ({self.max_reconnect_attempts}) reached")
+
+    def schedule_reconnect(self):
+        """Schedule reconnection with exponential backoff."""
+        if self.reconnect_attempts >= self.max_reconnect_attempts:
+            return
+            
+        self.reconnect_attempts += 1
+        delay_ms = min(self.reconnect_delay * 1000, self.max_reconnect_delay * 1000)
+        
+        self.log(f"🔄 Scheduling reconnect attempt {self.reconnect_attempts}/{self.max_reconnect_attempts} in {self.reconnect_delay}s")
+        
+        # Emit signal to start timer (thread-safe)
+        self._schedule_reconnect_signal.emit(int(delay_ms))
+        
+        # Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s (capped)
+        self.reconnect_delay = min(self.reconnect_delay * 2, self.max_reconnect_delay)
+    
+    def _start_reconnect_timer(self, delay_ms):
+        """Start the reconnect timer (called in main thread via signal)."""
+        self.reconnect_timer.start(delay_ms)
+
+    def _attempt_reconnect(self):
+        """Internal method to attempt reconnection (called by timer)."""
+        self.log("Attempting reconnection...")
+        self.connect_thread = threading.Thread(target=self.connect_socket, daemon=True)
+        self.connect_thread.start()
+
+    def on_status_update(self, data):
+        """Handle status update (Rejection/Approval) from server."""
+        try:
+            self.log(f"📩 Received status update: {data.get('test_case_name', 'Unknown')} - {data.get('status')}")
+            
+            if data.get('status') == 'Rejected':
+                msg = f"Test Case '{data.get('test_case_name')}' was REJECTED.\nComment: {data.get('auditor_comment')}"
+                
+                # Emit full notification object for the panel
+                self.notification_received.emit({
+                    "title": "Audit Alert",
+                    "message": msg,
+                    "timestamp": data.get('timestamp', datetime.now().isoformat()),
+                    "status": "Rejected",
+                    "details": data
+                })
+        except Exception as e:
+            self.log(f"Error handling status_update: {e}")
+
+    def on_new_result(self, data):
+        """Handle new result broadcast (for Auditor Dashboard)."""
+        try:
+            self.log(f"📊 New result received: {data.get('test_case_name', 'Unknown')}")
+            self.dashboard_update.emit(data)
+        except Exception as e:
+            self.log(f"Error handling new_result: {e}")
+
+    def join_assignment_room(self, project, suite):
+        """Join a specific assignment room to receive updates."""
+        if self.connection_state == self.STATE_CONNECTED:
+            try:
+                self.sio.emit('join_assignment_room', {'project': project, 'suite': suite})
+                self.log(f"Joined room: {project}_{suite}")
+            except Exception as e:
+                self.log(f"Error joining room: {e}")
 
     def stop_polling(self):
-        """Stops the polling timer."""
-        self.poll_timer.stop()
+        """Disconnects the socket (legacy name kept for compatibility)."""
+        self.log("Disconnecting...")
+        self.reconnect_timer.stop()  # Stop any pending reconnection
+        if self.sio.connected:
+            try:
+                self.sio.disconnect()
+            except Exception as e:
+                self.log(f"Error during disconnect: {e}")
 
     def submit_result(self, test_case_id, test_case_name, value):
-        """Submits a test result to the server."""
+        """Submits a test result to the server (via REST for reliability)."""
         try:
             payload = {
                 "test_case_id": str(test_case_id),
                 "test_case_name": str(test_case_name),
                 "executor_name": self.executor_name,
-                "value": float(value) if isinstance(value, (int, float)) else 0.0
+                "value": float(value)  # Convert string to float
             }
-            # Send immediately (synchronous is fine since it's fast)
-            requests.post(f"{self.server_url}/submit_result", json=payload, timeout=self.timeout)
+            # Send via REST
+            response = requests.post(
+                f"{self.server_url}/submit_result", 
+                json=payload, 
+                headers=self.headers, 
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            self.log(f"✅ Submitted result: {test_case_id}")
         except Exception as e:
-            print(f"Failed to submit result: {e}")
-
-    def _poll_notifications(self):
-        """Polls for notifications (called by QTimer)."""
-        try:
-            response = requests.get(f"{self.server_url}/notifications/{self.executor_name}", timeout=self.timeout)
-            if response.status_code == 200:
-                notifications = response.json()
-                for note in notifications:
-                    note_id = note['id']
-                    # Only show notifications we haven't seen yet
-                    if note_id not in self.seen_notification_ids:
-                        self.seen_notification_ids.add(note_id)
-                        msg = f"Test Case '{note['test_case_name']}' was REJECTED.\\nComment: {note['auditor_comment']}"
-                        self.notification_received.emit("Audit Alert", msg)
-                        
-                        # Mark as read
-                        requests.post(f"{self.server_url}/mark_read/{note_id}", timeout=self.timeout)
-        except Exception as e:
-            print(f"Polling error: {e}")
+            self.log(f"❌ Failed to submit result: {e}")
+            raise
 
     def fetch_dashboard_data(self):
-        """Fetches all latest results for the Auditor dashboard."""
+        """Fetches initial dashboard data via REST."""
         try:
-            response = requests.get(f"{self.server_url}/live_dashboard", timeout=self.timeout)
-            if response.status_code == 200:
-                return response.json()
+            response = requests.get(
+                f"{self.server_url}/live_dashboard", 
+                headers=self.headers, 
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json()
         except Exception as e:
-            print(f"Fetch error: {e}")
-        return []
+            self.log(f"Error fetching dashboard data: {e}")
+            return []
 
     def update_status(self, result_id, status, comment):
-        """Updates the status of a test result (Approve/Reject)."""
+        """Updates the status of a test result (Approve/Reject) via REST."""
         try:
             payload = {"status": status, "auditor_comment": comment}
-            requests.post(f"{self.server_url}/update_status/{result_id}", json=payload, timeout=self.timeout)
+            response = requests.post(
+                f"{self.server_url}/update_status/{result_id}", 
+                json=payload, 
+                headers=self.headers, 
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            self.log(f"✅ Updated status for result {result_id}: {status}")
             return True
         except Exception as e:
-            print(f"Update error: {e}")
+            self.log(f"❌ Error updating status: {e}")
             return False

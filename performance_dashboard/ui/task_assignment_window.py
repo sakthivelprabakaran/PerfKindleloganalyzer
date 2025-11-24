@@ -166,13 +166,15 @@ class TaskAssignmentDialog(QDialog):
         }
 
 class TaskAssignmentWindow(QWidget):
-    def __init__(self, return_callback=None):
+    def __init__(self, return_callback=None, auth_token=None):
         super().__init__()
         self.setWindowTitle("Task Assignment Dashboard")
         self.resize(1000, 700)
         
         self.return_callback = return_callback
         self.server_url = "http://localhost:8000"
+        self.auth_token = auth_token
+        self.headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
         
         self.init_ui()
         
@@ -416,7 +418,7 @@ class TaskAssignmentWindow(QWidget):
         if dialog.exec_() == QDialog.Accepted:
             data = dialog.get_data()
             try:
-                response = requests.post(f"{self.server_url}/users", json=data, timeout=3)
+                response = requests.post(f"{self.server_url}/users", json=data, headers=self.headers, timeout=3)
                 if response.status_code == 200:
                     QMessageBox.information(self, "Success", "User created successfully!")
                     self.refresh_users()
@@ -444,7 +446,7 @@ class TaskAssignmentWindow(QWidget):
         if dialog.exec_() == QDialog.Accepted:
             data = dialog.get_data()
             try:
-                response = requests.post(f"{self.server_url}/projects", json=data, timeout=3)
+                response = requests.post(f"{self.server_url}/projects", json=data, headers=self.headers, timeout=3)
                 if response.status_code == 200:
                     QMessageBox.information(self, "Success", "Project created successfully!")
                     self.refresh_projects()
@@ -458,7 +460,7 @@ class TaskAssignmentWindow(QWidget):
         if dialog.exec_() == QDialog.Accepted:
             data = dialog.get_data()
             try:
-                response = requests.post(f"{self.server_url}/task_assignments", json=data, timeout=3)
+                response = requests.post(f"{self.server_url}/task_assignments", json=data, headers=self.headers, timeout=3)
                 if response.status_code == 200:
                     QMessageBox.information(self, "Success", "Task assignment created successfully!")
                     self.refresh_assignments()

@@ -8,9 +8,10 @@ import os
 
 class MainWindow(QWidget):
     """A container widget for the Performance Dashboard application."""
-    def __init__(self, back_to_launcher_callback=None):
+    def __init__(self, back_to_launcher_callback=None, auth_token=None):
         super().__init__()
         self.back_to_launcher_callback = back_to_launcher_callback
+        self.user_context = {"token": auth_token} if auth_token else None
         self.state_manager = StateManager()
         self.data_manager = None  # Instantiated when a session starts
         self.save_thread = None
@@ -40,7 +41,8 @@ class MainWindow(QWidget):
             self.stacked_widget.removeWidget(self.audit_window)
             self.audit_window.deleteLater()
             
-        self.audit_window = AuditWindow(self.switch_to_launcher)
+        token = self.user_context.get("token") if self.user_context else None
+        self.audit_window = AuditWindow(self.switch_to_launcher, auth_token=token)
         self.stacked_widget.addWidget(self.audit_window)
         self.stacked_widget.setCurrentWidget(self.audit_window)
 
@@ -78,7 +80,7 @@ class MainWindow(QWidget):
             self.execution_dashboard.deleteLater()
 
         self.execution_dashboard = ExecutionDashboard(
-            self.state_manager, self.data_manager, self.switch_to_launcher, self.switch_to_dashboard
+            self.state_manager, self.data_manager, self.switch_to_launcher, self.switch_to_dashboard, self.user_context
         )
 
         self.stacked_widget.addWidget(self.execution_dashboard)

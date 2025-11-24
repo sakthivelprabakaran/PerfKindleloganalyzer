@@ -186,21 +186,23 @@ class LoginWindow(QWidget):
             )
             
             if response.status_code == 200:
-                result = response.json()
+                data = response.json()
+                # Extract token and user info
+                access_token = data.get("access_token")
+                username = data.get("username")
+                role = data.get("role")
+                full_name = data.get("full_name")
                 
-                if result.get("success"):
-                    # Login successful
-                    self.on_login_success(
-                        result["username"],
-                        result["role"],
-                        result["full_name"]
-                    )
+                if access_token and username and role and full_name:
+                    QMessageBox.information(self, "Success", f"Welcome back, {full_name}!")
+                    self.on_login_success(username, role, full_name, access_token)
                     self.close()
                 else:
-                    # Login failed
-                    self.show_error(result.get("message", "Login failed"))
+                    self.show_error(data.get("message", "Login failed: Incomplete server response."))
             else:
-                self.show_error("Server error. Please try again.")
+                error_msg = response.json().get("detail", "Login failed")
+                QMessageBox.warning(self, "Login Failed", error_msg)
+                self.show_error(error_msg) # Also update the internal error label
         
         except requests.exceptions.ConnectionError:
             self.show_error("Cannot connect to server. Please ensure server is running.")

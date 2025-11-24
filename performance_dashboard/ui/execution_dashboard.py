@@ -7,9 +7,9 @@ from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QGroupBox, QLabel, QPushButton,
     QTextEdit, QTableWidget, QTabWidget, QSplitter,
     QTableWidgetItem, QHeaderView, QMessageBox, QFrame, QLineEdit, QComboBox, QCompleter, QScrollArea,
-    QStatusBar, QGridLayout, QCheckBox
+    QStatusBar, QGridLayout, QCheckBox, QListWidget, QListWidgetItem
 )
-from PyQt5.QtGui import QPainter, QFont
+from PyQt5.QtGui import QPainter, QFont, QColor, QBrush
 from PyQt5.QtCore import Qt, QTimer, QTime, QStringListModel, QSize
 
 class CircleIndicator(QWidget):
@@ -67,12 +67,13 @@ class ExecutionDashboard(QWidget):
     """
     The main dashboard for test case execution, timing, and data entry.
     """
-    def __init__(self, state_manager, data_manager, return_to_launcher_callback, switch_session_callback=None):
+    def __init__(self, state_manager, data_manager, return_to_launcher_callback, switch_session_callback=None, user_context=None):
         super().__init__()
         self.state = state_manager
         self.data_manager = data_manager
         self.return_to_launcher = return_to_launcher_callback
         self.switch_session_callback = switch_session_callback
+        self.user_context = user_context
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_timer_display)
@@ -156,7 +157,13 @@ class ExecutionDashboard(QWidget):
         self.server_ip_input = QLineEdit("http://localhost:8000")
         self.server_ip_input.setPlaceholderText("Server URL")
         self.server_ip_input.setEnabled(False)
+        
+        # Connection status indicator
+        self.connection_indicator = QLabel("⚫ Not Connected")
+        self.connection_indicator.setStyleSheet("color: gray; font-weight: bold;")
+        
         live_layout.addWidget(self.live_chk)
+        live_layout.addWidget(self.connection_indicator)
         live_layout.addWidget(self.server_ip_input)
 
         # Add widgets to grid
@@ -170,18 +177,29 @@ class ExecutionDashboard(QWidget):
         
         layout.addWidget(session_group)
         
-        # Save Buttons - Moved to top for easy access
-        save_layout = QHBoxLayout()
+        # Action buttons row
+        action_layout = QHBoxLayout()
         
         save_btn = QPushButton("💾 Save")
+        save_btn.setFixedHeight(40)
         save_btn.clicked.connect(self.save_session)
-        save_layout.addWidget(save_btn)
+        action_layout.addWidget(save_btn)
 
         save_return_btn = QPushButton("💾 Save & Return")
+        save_return_btn.setFixedHeight(40)
         save_return_btn.clicked.connect(self.save_and_return)
-        save_layout.addWidget(save_return_btn)
+        action_layout.addWidget(save_return_btn)
         
-        layout.addLayout(save_layout)
+        # Submit All Completed button
+        self.submit_all_btn = QPushButton("📤 Submit All")
+        self.submit_all_btn.setFixedHeight(40)
+        self.submit_all_btn.setToolTip("Submit all completed test cases to auditor")
+        self.submit_all_btn.clicked.connect(self.submit_all_completed)
+        self.submit_all_btn.setEnabled(False)  # Disabled until Live Mode is on
+        action_layout.addWidget(self.submit_all_btn)
+        
+        action_layout.addStretch() # Pushes buttons to the left
+        layout.addLayout(action_layout)
 
         # Timer
         timer_group = QGroupBox("⏱️ Timer")
@@ -309,6 +327,7 @@ class ExecutionDashboard(QWidget):
         panel.setLayout(layout)
 
         self.tabs = QTabWidget()
+        self.tabs.currentChanged.connect(self.on_tab_changed)
         layout.addWidget(self.tabs)
 
         # Tab 1: Test Case Details
@@ -383,6 +402,21 @@ class ExecutionDashboard(QWidget):
 
         self.tabs.addTab(results_tab, "📈 Results")
 
+        # Tab 3: Notifications (NEW)
+        notifications_tab = QWidget()
+        notifications_layout = QVBoxLayout(notifications_tab)
+        
+        self.notification_list = QListWidget()
+        self.notification_list.setAlternatingRowColors(True)
+        notifications_layout.addWidget(self.notification_list)
+        
+        # Clear button
+        clear_btn = QPushButton("Clear All")
+        clear_btn.clicked.connect(self.notification_list.clear)
+        notifications_layout.addWidget(clear_btn)
+        
+        self.tabs.addTab(notifications_tab, "🔔 Notifications")
+
         return panel
 
     def load_session_data(self):
@@ -445,7 +479,8 @@ class ExecutionDashboard(QWidget):
             # Create network manager if not exists
             if not self.network_manager:
                 executor_name = session_data.get('username', 'Executor')
-                self.network_manager = NetworkManager(server_url, executor_name)
+                token = self.user_context.get('token') if hasattr(self, 'user_context') and self.user_context else None
+                self.network_manager = NetworkManager(executor_name=executor_name, token=token)
                 self.network_manager.notification_received.connect(self.show_audit_notification)
             
             # Set executor name
@@ -637,7 +672,7 @@ class ExecutionDashboard(QWidget):
                 # Calculate average of all 5 iterations
                 iteration_values = []
                 for i in range(1, 6):
-                    val = self.current_test_case.get(f"Iteration {i}", None)
+                    val = self.current_test_case.get(f"Iteration{i}", None)  # No space!
                     if val is not None and val != "":
                         try:
                             iteration_values.append(float(val))
@@ -646,7 +681,10 @@ class ExecutionDashboard(QWidget):
                 
                 if iteration_values:
                     average_value = sum(iteration_values) / len(iteration_values)
-                    self.network_manager.submit_result(tc_id, tc_name, f"{average_value:.3f}")
+                    try:
+                        self.network_manager.submit_result(tc_id, tc_name, f"{average_value:.3f}")
+                    except Exception as e:
+                        print(f"Error submitting result: {e}")
             
             self.navigate_next()
         else:
@@ -865,28 +903,125 @@ class ExecutionDashboard(QWidget):
             super().keyPressEvent(event)
 
     def toggle_live_mode(self, state):
+        """Toggles the live mode on/off."""
         self.live_mode = (state == 2)
-        self.server_ip_input.setEnabled(not self.live_mode) # Disable editing while active
+        self.server_ip_input.setEnabled(not self.live_mode)  # Disable editing while active
+        self.submit_all_btn.setEnabled(self.live_mode)  # Enable submit button when live
         
         if self.live_mode:
             # Create NetworkManager lazily only when needed
             if self.network_manager is None:
                 from performance_dashboard.logic.network_manager import NetworkManager
-                self.network_manager = NetworkManager()
+                self.network_manager = NetworkManager(
+                    executor_name=self.user_context.get('username', 'UnknownExecutor'),
+                    token=self.user_context.get('auth_token')
+                )
                 self.network_manager.notification_received.connect(self.show_audit_notification)
+                self.network_manager.connection_status.connect(self.update_connection_status)
             
+            # WebSocket connects automatically, no need to start polling
             url = self.server_ip_input.text().strip()
             self.network_manager.server_url = url
-            self.network_manager.start_polling()
             self.status_bar.showMessage(f"Live Mode Active: Connected to {url}")
         else:
             if self.network_manager:
                 self.network_manager.stop_polling()
+            self.connection_indicator.setText("⚫ Not Connected")
+            self.connection_indicator.setStyleSheet("color: gray; font-weight: bold;")
             self.status_bar.showMessage("Live Mode Disabled")
+    
+    def update_connection_status(self, state, message):
+        """Updates the connection status indicator based on network manager state."""
+        # Map states to visual indicators
+        status_map = {
+            "connecting": ("🟡 Connecting...", "color: orange; font-weight: bold;"),
+            "connected": ("🟢 Connected", "color: green; font-weight: bold;"),
+            "disconnected": ("🔴 Disconnected", "color: red; font-weight: bold;"),
+            "failed": ("⚠️ Failed", "color: darkred; font-weight: bold;")
+        }
+        
+        if state in status_map:
+            text, style = status_map[state]
+            self.connection_indicator.setText(text)
+            self.connection_indicator.setStyleSheet(style)
+            self.status_bar.showMessage(message)
+    
+    def submit_all_completed(self):
+        """Submits all completed test cases (those with calculated averages) to auditor."""
+        if not self.live_mode or not self.network_manager:
+            QMessageBox.warning(self, "Error", "Live Mode must be enabled to submit results.")
+            return
+        
+        # Get all test cases from current sheet
+        sheet_name = self.state.get_active_sheet()
+        sheet_data = self.data_manager.get_sheet_data(sheet_name)
+        
+        if sheet_data.empty:
+            QMessageBox.information(self, "No Data", "No test cases found in current sheet.")
+            return
+        
+        submitted_count = 0
+        failed_count = 0
+        
+        # Find all test cases with calculated averages
+        for idx, row in sheet_data.iterrows():
+            tc_id = row.get("Test Case ID", "")
+            tc_name = row.get("Test Case Name", "")
+            average = row.get("Average", "")
+            
+            # Check if test case has a valid average
+            if average and str(average).strip() != "" and average != "N/A":
+                try:
+                    avg_float = float(average)
+                    if avg_float > 0:  # Valid average
+                        self.network_manager.submit_result(tc_id, tc_name, f"{avg_float:.3f}")
+                        submitted_count += 1
+                except Exception as e:
+                    print(f"Failed to submit {tc_name}: {e}")
+                    failed_count += 1
+        
+        # Show summary
+        if submitted_count > 0:
+            QMessageBox.information(
+                self, 
+                "Submission Complete", 
+                f"✅ Successfully submitted {submitted_count} test case(s).\n" +
+                (f"⚠️ Failed: {failed_count}" if failed_count > 0 else "")
+            )
+            self.status_bar.showMessage(f"Submitted {submitted_count} completed test cases to auditor")
+        else:
+            QMessageBox.information(self, "No Data", "No completed test cases found to submit.")
 
-    def show_audit_notification(self, title, message):
-        """Shows a popup notification from the Auditor."""
+    def show_audit_notification(self, data):
+        """Displays an audit notification and adds it to the panel."""
+        title = data.get("title", "Audit Alert")
+        message = data.get("message", "")
+        timestamp = data.get("timestamp", "")
+        
+        # 1. Show transient popup
         QMessageBox.warning(self, title, message)
+        
+        # 2. Add to Notification Panel
+        item_text = f"[{timestamp}] {message}"
+        item = QListWidgetItem(item_text)
+        
+        # Style based on status
+        if data.get("status") == "Rejected":
+            item.setForeground(QBrush(QColor("red")))
+            item.setBackground(QBrush(QColor("#ffebee"))) # Light red background
+            
+        self.notification_list.insertItem(0, item) # Add to top
+        
+        # 3. Switch to notification tab if not already there
+        # self.tabs.setCurrentIndex(2) # Optional: Auto-switch? Maybe annoying.
+        
+        # 4. Highlight tab header to indicate new notification
+        self.tabs.tabBar().setTabTextColor(2, QColor("red"))
+
+    def on_tab_changed(self, index):
+        """Reset tab color when user views notifications."""
+        if index == 2: # Notifications tab
+            self.tabs.tabBar().setTabTextColor(2, QColor("black"))
 
     def __del__(self):
         """Destructor to ensure cleanup."""

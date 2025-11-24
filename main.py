@@ -21,7 +21,6 @@ class ApplicationContainer(QMainWindow):
         self.setWindowTitle(APP_NAME)
         self.setGeometry(50, 50, 1600, 1000)
 
-        self.set_app_icon()
         self.dark_mode = False
         
         # User authentication state
@@ -32,6 +31,24 @@ class ApplicationContainer(QMainWindow):
         self.stacked_widget = QStackedWidget()
         self.setCentralWidget(self.stacked_widget)
 
+        # Applications will be instantiated after successful login
+        self.universal_launcher = None
+        self.log_analyzer = None
+        self.exec_dashboard = None
+        self.audit_window = None
+        self.task_assignment_window = None
+
+        self.load_stylesheet()
+
+    def init_main_app_screens(self):
+        """Initializes and adds all main application screens to the stacked widget after login."""
+        if self.universal_launcher: # Avoid re-initializing if already done
+            return
+
+        # Use stored user info
+        user_role = self.user_role or "guest"
+        auth_token = self.auth_token
+
         # Instantiate all the applications/screens
         self.universal_launcher = UniversalLauncher(
             self.launch_log_analyzer,
@@ -39,12 +56,17 @@ class ApplicationContainer(QMainWindow):
             self.launch_audit_report,
             self.launch_task_assignment,
             self.toggle_dark_mode,
-            user_role="admin"  # Will be updated after login
+            user_role=user_role
         )
-        self.log_analyzer = FinalKindleLogAnalyzer(back_to_launcher_callback=self.back_to_launcher)
-        self.exec_dashboard = PerformanceDashboard(back_to_launcher_callback=self.back_to_launcher)
-        self.audit_window = AuditWindow(return_callback=self.back_to_launcher)
-        self.task_assignment_window = TaskAssignmentWindow(return_callback=self.back_to_launcher)
+        # Pass token to FinalKindleLogAnalyzer
+        self.log_analyzer = FinalKindleLogAnalyzer(back_to_launcher_callback=self.back_to_launcher, auth_token=auth_token)
+        # Pass token to PerformanceDashboard
+        self.exec_dashboard = PerformanceDashboard(back_to_launcher_callback=self.back_to_launcher, auth_token=auth_token)
+        self.audit_window = AuditWindow(return_callback=self.back_to_launcher, auth_token=auth_token)
+        self.task_assignment_window = TaskAssignmentWindow(
+            return_callback=self.back_to_launcher,
+            auth_token=self.auth_token
+        )
 
         # Add them to the stack
         self.stacked_widget.addWidget(self.universal_launcher)
@@ -82,17 +104,22 @@ class ApplicationContainer(QMainWindow):
         self.setWindowTitle("Kindle Test Engineering Tools")
         self.stacked_widget.setCurrentWidget(self.universal_launcher)
     
-    def on_login_success(self, username, role, full_name):
+    def on_login_success(self, username, role, full_name, token):
         """Called when user successfully logs in."""
         self.current_user = username
         self.user_role = role
         self.user_full_name = full_name
+        self.auth_token = token # Store the token
+        
+        # Initialize the main app screens now that we have the user info
+        self.init_main_app_screens()
         
         # Update window title with user info
         self.setWindowTitle(f"Kindle Test Engineering Tools - {full_name} ({role})")
         
-        # Update launcher with user role
-        self.universal_launcher.set_user_role(role)
+        # Update launcher with user role (redundant if init_main_app_screens does it, but safe)
+        if self.universal_launcher:
+            self.universal_launcher.set_user_role(role)
         
         # Show main application
         self.show()

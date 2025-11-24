@@ -17,9 +17,10 @@ class AuditWindow(QWidget):
     Window for the Audit and Report feature.
     Allows selecting Current and Reference files, generating comparison, and exporting reports.
     """
-    def __init__(self, return_callback):
+    def __init__(self, return_callback, auth_token=None):
         super().__init__()
         self.return_callback = return_callback
+        self.auth_token = auth_token
         self.audit_manager = AuditManager()
         self.current_file_path = ""
         self.reference_file_path = ""
@@ -518,7 +519,8 @@ class AuditWindow(QWidget):
         
         try:
             import requests
-            response = requests.get(f"{server_url}/my_audits/{username}", timeout=3)
+            headers = {"Authorization": f"Bearer {self.auth_token}"} if self.auth_token else {}
+            response = requests.get(f"{server_url}/my_audits/{username}", headers=headers, timeout=3)
             if response.status_code == 200:
                 self.my_assignments = response.json()
                 self.populate_assignments_table()
@@ -602,8 +604,12 @@ class AuditWindow(QWidget):
                 data = {
                     'auditor_username': auditor_username,
                     'project': assignment['project'],
-                    'suite': assignment['suite']
+                    'suite': assignment['suite'],
+                    'token': self.auth_token # Pass token in body for Form data
                 }
+                # Note: For UploadFile + Form, we passed token in body as per server update
+                # But we can also pass header if server supports it (OAuth2PasswordBearer usually looks at header)
+                # Our server implementation checks Form('token') manually for upload_brd
                 response = requests.post(f"{server_url}/upload_brd", files=files, data=data, timeout=10)
             
             if response.status_code == 200:
@@ -626,11 +632,11 @@ class AuditWindow(QWidget):
     def open_live_monitor_for_assignment(self, assignment):
         """Opens Live Monitor filtered for a specific assignment."""
         suite_filter = assignment['suite']  # e.g., "P0", "P1", "P2"
-        self.live_window = LiveAuditWindow(suite_filter=suite_filter)
+        self.live_window = LiveAuditWindow(suite_filter=suite_filter, auth_token=self.auth_token)
         self.live_window.setWindowTitle(f"Live Monitor - {assignment['project']} {suite_filter}")
         self.live_window.show()
 
     def open_live_monitor(self):
         if self.live_window is None:
-            self.live_window = LiveAuditWindow()
+            self.live_window = LiveAuditWindow(auth_token=self.auth_token)
         self.live_window.show()

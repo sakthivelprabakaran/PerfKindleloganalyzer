@@ -28,9 +28,10 @@ from openpyxl.styles import Font, Alignment, PatternFill
 
 
 class FinalKindleLogAnalyzer(QMainWindow):
-    def __init__(self, back_to_launcher_callback=None):
+    def __init__(self, back_to_launcher_callback=None, auth_token=None):
         super().__init__()
         self.back_to_launcher_callback = back_to_launcher_callback
+        self.auth_token = auth_token
         self.state = StateManager()
         self.comparison_result_a = None
         self.comparison_result_b = None

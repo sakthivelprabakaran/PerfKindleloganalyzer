@@ -10,13 +10,16 @@ import pandas as pd
 import os
 import shutil
 import bcrypt
+import jwt
+from datetime import datetime, timedelta
 
 # Import centralized configuration
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import (
     SERVER_IP, SERVER_PORT, DB_NAME, DB_BACKUP_DIR, 
-    DB_BACKUP_RETENTION, DEFAULT_PASSWORD
+    DB_BACKUP_RETENTION, DEFAULT_PASSWORD,
+    SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 )
 
 import time
@@ -191,7 +194,7 @@ class ResultResponse(BaseModel):
     is_read_by_executor: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class TaskAssignmentCreate(BaseModel):
     project: str
@@ -209,7 +212,7 @@ class TaskAssignmentResponse(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class UserCreate(BaseModel):
     username: str
@@ -220,6 +223,13 @@ class UserCreate(BaseModel):
 class UserLogin(BaseModel):
     username: str
     password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    username: str
+    role: str
+    full_name: str
 
 class LoginResponse(BaseModel):
     success: bool
@@ -235,7 +245,7 @@ class UserResponse(BaseModel):
     role: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ProjectCreate(BaseModel):
     name: str
@@ -247,29 +257,156 @@ class ProjectResponse(BaseModel):
     description: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
+
+# --- Authentication Utilities ---
+def verify_password(plain_password, hashed_password):
+    """Verify a password against a hash."""
+    if not hashed_password:
+        return False
+    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+
+def get_password_hash(password):
+    """Hash a password."""
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+# Alias for compatibility if used elsewhere
+hash_password = get_password_hash
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    """Create a JWT access token."""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def normalize_username(username: str) -> str:
+    """Normalize username to lowercase for consistent handling."""
+    return username.lower().strip()
 
 # --- FastAPI App ---
 app = FastAPI(title="Live Audit Server")
 
-@app.on_event("startup")
 async def startup_event():
-    """Run on server startup: backup database and enable WAL mode."""
+    """Run startup tasks."""
     print("🚀 Starting Live Audit Server...")
-    
-    # 1. Backup existing database
+    # 1. Backup Database
     backup_database()
     
-    # 2. Enable WAL mode for better concurrency
+    # 2. Enable WAL Mode
     try:
-        with engine.connect() as conn:
-            conn.execute(text("PRAGMA journal_mode=WAL;"))
-            result = conn.execute(text("PRAGMA journal_mode;")).fetchone()
+        with engine.connect() as connection:
+            connection.execute(text("PRAGMA journal_mode=WAL;"))
+            # Verify WAL mode is active
+            result = connection.execute(text("PRAGMA journal_mode;")).fetchone()
             print(f"✅ SQLite journal mode: {result[0]}")
     except Exception as e:
-        print(f"⚠️  WAL mode setup failed: {e}")
+        print(f"⚠️ Failed to enable WAL mode: {e}")
+
+    # 3. Create Default Admin if not exists
+    try:
+        db = SessionLocal()
+        admin = db.query(User).filter(User.username == "admin").first()
+        if not admin:
+            print("⚠️ No admin user found. Creating default admin...")
+            hashed_password = get_password_hash(DEFAULT_PASSWORD)
+            new_admin = User(
+                username="admin",
+                full_name="System Administrator",
+                role="admin",
+                password_hash=hashed_password # Corrected from hashed_password to password_hash
+            )
+            db.add(new_admin)
+            db.commit()
+            print(f"✅ Default admin created. Username: 'admin', Password: '{DEFAULT_PASSWORD}'")
+        db.close()
+    except Exception as e:
+        print(f"❌ Failed to create default admin: {e}")
     
     print("✅ Server startup complete!\n")
+
+app.add_event_handler("startup", startup_event)
+
+# --- Socket.IO Setup ---
+import socketio
+
+# Create Socket.IO server (Async)
+sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
+# Wrap FastAPI app with Socket.IO app
+socket_app = socketio.ASGIApp(sio, app)
+
+# --- Socket.IO Event Handlers ---
+@sio.event
+async def connect(sid, environ, auth):
+    """Handle new WebSocket connection."""
+    print(f"🔌 Client connected: {sid}")
+    # Auth check (optional but recommended)
+    if auth:
+        token = auth.get('token')
+        if token:
+            try:
+                # Validate token is not empty
+                if not token or token.strip() == '':
+                    print(f"⚠️ Empty token provided for {sid}")
+                    return
+                
+                payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+                username = payload.get("sub")
+                role = payload.get("role")
+                print(f"✅ Authenticated WebSocket user: {username} ({role})")
+                
+                # Store user info in session
+                await sio.save_session(sid, {'username': username, 'role': role})
+                
+                # Join personal room (for direct notifications)
+                await sio.enter_room(sid, f"user_{username}")
+                
+                # Join role-based room
+                await sio.enter_room(sid, f"role_{role}")
+                
+            except jwt.ExpiredSignatureError:
+                print(f"⚠️ WebSocket Auth Failed: Token expired for {sid}")
+            except jwt.InvalidTokenError as e:
+                print(f"⚠️ WebSocket Auth Failed for {sid}: Invalid token - {e}")
+            except Exception as e:
+                print(f"⚠️ WebSocket Auth Failed for {sid}: {e}")
+        else:
+            print(f"⚠️ No token in auth dictionary for {sid}")
+    else:
+        print(f"⚠️ No auth dictionary provided for WebSocket connection {sid}")
+    
+    # Debug: Print all rooms for this SID
+    print(f"🔍 Rooms for {sid}: {sio.rooms(sid)}")
+
+@sio.event
+async def disconnect(sid):
+    """Handle WebSocket disconnection."""
+    print(f"🔌 Client disconnected: {sid}")
+
+@sio.event
+async def join_assignment_room(sid, data):
+    """Allow auditors/executors to join specific assignment rooms."""
+    # data = {'project': 'Kindle', 'suite': 'P0'}
+    project = data.get('project')
+    suite = data.get('suite')
+    if project and suite:
+        room_name = f"assignment_{project}_{suite}"
+        await sio.enter_room(sid, room_name)
+        print(f"👤 {sid} joined room: {room_name}")
+
+@sio.event
+async def leave_assignment_room(sid, data):
+    """Leave assignment room."""
+    project = data.get('project')
+    suite = data.get('suite')
+    if project and suite:
+        room_name = f"assignment_{project}_{suite}"
+        await sio.leave_room(sid, room_name)
+        print(f"👤 {sid} left room: {room_name}")
 
 def get_db():
     db = SessionLocal()
@@ -278,77 +415,63 @@ def get_db():
     finally:
         db.close()
 
-# --- Helper Functions ---
-def normalize_username(username: str) -> str:
-    """Normalize username to lowercase for case-insensitive matching."""
-    return username.lower().strip() if username else ""
+from fastapi.security import OAuth2PasswordBearer
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
-# --- Password Utilities ---
-def hash_password(password: str) -> str:
-    """Hash a password using bcrypt."""
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-
-def verify_password(password: str, hashed: str) -> bool:
-    """Verify a password against its hash."""
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
     try:
-        return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
-    except Exception:
-        return False
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except jwt.PyJWTError:
+        raise credentials_exception
+    
+    user = db.query(User).filter(User.username == username).first()
+    if user is None:
+        raise credentials_exception
+    return user
 
 # --- Authentication Endpoints ---
-@app.post("/login", response_model=LoginResponse)
-def login(credentials: UserLogin, db: Session = Depends(get_db)):
-    """Authenticate user and return user info."""
+@app.post("/login", response_model=Token)
+def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
+    """Authenticates a user and returns a JWT token."""
     # Normalize username
-    normalized_username = normalize_username(credentials.username)
+    normalized_username = normalize_username(user_credentials.username)
     
-    # Find user
     user = db.query(User).filter(User.username == normalized_username).first()
     
-    if not user:
-        return LoginResponse(
-            success=False,
-            username="",
-            full_name="",
-            role="",
-            message="Invalid username or password"
-        )
+    if not user or not verify_password(user_credentials.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Incorrect username or password")
     
-    # Check if user has password set
-    if not user.password_hash:
-        return LoginResponse(
-            success=False,
-            username="",
-            full_name="",
-            role="",
-            message="Password not set. Please contact administrator."
-        )
-    
-    # Verify password
-    if not verify_password(credentials.password, user.password_hash):
-        return LoginResponse(
-            success=False,
-            username="",
-            full_name="",
-            role="",
-            message="Invalid username or password"
-        )
-    
-    # Success
-    return LoginResponse(
-        success=True,
-        username=user.username,
-        full_name=user.full_name,
-        role=user.role,
-        message="Login successful"
+    # Create access token
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username, "role": user.role},
+        expires_delta=access_token_expires
     )
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "username": user.username,
+        "role": user.role,
+        "full_name": user.full_name
+    }
 
 @app.post("/submit_result", response_model=ResultResponse)
 @retry_on_db_lock()
-def submit_result(result: ResultCreate, db: Session = Depends(get_db)):
-    """Executor submits a new test result with auto-comparison against BRD."""
+def submit_result(result: ResultCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Executor submits a test result."""
+    # Verify user is the executor
+    # (Optional: strictly enforce that current_user.username == result.executor_name)
     
-    # Auto-comparison: Try to find BRD reference
+    # Check if test case ID already exists for this run (optional, but good for integrity)son: Try to find BRD reference
     brd_reference = None
     deviation_percent = None
     auto_status = "Pending"
@@ -399,6 +522,23 @@ def submit_result(result: ResultCreate, db: Session = Depends(get_db)):
     db.add(db_result)
     db.commit()
     db.refresh(db_result)
+    
+    # --- WebSocket Broadcast ---
+    # Convert result to dict for JSON serialization
+    result_dict = ResultResponse.from_orm(db_result).dict()
+    # Convert datetime to ISO string
+    result_dict['timestamp'] = result_dict['timestamp'].isoformat()
+    
+    # 1. Broadcast to all auditors (general dashboard)
+    print(f"📢 Broadcasting new_result to role_auditor. Data: {result_dict['test_case_name']}")
+    asyncio.run(sio.emit('new_result', result_dict, room='role_auditor'))
+    
+    # 2. Broadcast to specific assignment room (if applicable)
+    if suite:
+        # Assuming project is known or passed. For now, we might need to look it up or rely on general broadcast.
+        # Ideally, we'd broadcast to f"assignment_{project}_{suite}"
+        pass 
+        
     return db_result
 
 @app.get("/live_dashboard", response_model=List[ResultResponse])
@@ -419,6 +559,26 @@ def update_status(result_id: int, update: ResultUpdate, db: Session = Depends(ge
     db_result.is_read_by_executor = 0 # Reset read status so executor gets notified
     db.commit()
     db.refresh(db_result)
+    
+    # --- WebSocket Broadcast ---
+    # Notify the specific executor immediately
+    notification_data = {
+        "id": db_result.id,
+        "test_case_name": db_result.test_case_name,
+        "status": db_result.status,
+        "auditor_comment": db_result.auditor_comment,
+        "timestamp": datetime.now().isoformat()
+    }
+    
+    # Emit to the executor's personal room
+    # We need to find the executor's username. It's in db_result.executor_name
+    # Note: executor_name might not match username exactly if normalization differs, 
+    # but we should use normalized version for room names.
+    executor_room = f"user_{normalize_username(db_result.executor_name)}"
+    
+    print(f"📢 Emitting status update to {executor_room}")
+    asyncio.run(sio.emit('status_update', notification_data, room=executor_room))
+    
     return db_result
 
 @app.get("/notifications/{executor_name}", response_model=List[ResultResponse])
@@ -442,13 +602,19 @@ def mark_read(result_id: int, db: Session = Depends(get_db)):
     return {"status": "ok"}
 
 @app.post("/task_assignments", response_model=TaskAssignmentResponse)
-def create_task_assignment(task: TaskAssignmentCreate, db: Session = Depends(get_db)):
-    """Admin creates a new task assignment."""
+@retry_on_db_lock()
+def create_task_assignment(assignment: TaskAssignmentCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Admin assigns a task to an executor and auditor."""
+    # Verify admin role
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+        
+    # Normalize usernames
     db_task = TaskAssignment(
-        project=task.project,
-        suite=task.suite,
-        executor_username=task.executor_username,
-        auditor_username=task.auditor_username,
+        project=assignment.project,
+        suite=assignment.suite,
+        executor_username=assignment.executor_username,
+        auditor_username=assignment.auditor_username,
         status="Assigned"
     )
     db.add(db_task)
@@ -483,8 +649,12 @@ def get_all_assignments(db: Session = Depends(get_db)):
 # User Management Endpoints
 @app.post("/users", response_model=UserResponse)
 @retry_on_db_lock()
-def create_user(user: UserCreate, db: Session = Depends(get_db)):
+def create_user(user: UserCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Admin creates a new user with hashed password."""
+    # Verify admin role
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+        
     # Normalize username before saving
     normalized_username = normalize_username(user.username)
     
@@ -540,8 +710,12 @@ def get_auditors(db: Session = Depends(get_db)):
 # Project Management Endpoints
 @app.post("/projects", response_model=ProjectResponse)
 @retry_on_db_lock()
-def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
+def create_project(project: ProjectCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Admin creates a new project."""
+    # Verify admin role
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+        
     # Check if project already exists
     existing_project = db.query(Project).filter(Project.name == project.name).first()
     if existing_project:
@@ -602,10 +776,28 @@ async def upload_brd(
     auditor_username: str = Form(...),
     project: str = Form(...),
     suite: str = Form(...),
+    token: str = Form(...),
     db: Session = Depends(get_db)
 ):
-    """Auditor uploads BRD Excel file for a specific suite with validation."""
-    
+    """Auditor uploads a BRD Excel file."""
+    print(f"DEBUG: upload_brd called. Token: {token[:10]}...")
+    # Verify token manually (since OAuth2PasswordBearer doesn't support Form data easily)
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        role: str = payload.get("role")
+        print(f"DEBUG: Token decoded. Username: {username}, Role: {role}")
+        
+        if role != "auditor" and role != "admin":
+             raise HTTPException(status_code=403, detail="Not authorized")
+    except Exception as e:
+        print(f"DEBUG: Token validation failed: {e}")
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # Validate file extension
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        raise HTTPException(status_code=400, detail="Invalid file type. Only .xlsx and .xls files are allowed.")
+        
     # Create uploads directory if it doesn't exist
     upload_dir = "brd_uploads"
     os.makedirs(upload_dir, exist_ok=True)
@@ -697,4 +889,4 @@ if __name__ == "__main__":
         exit(1)
 
     print("🚀 Starting Live Audit Server...")
-    uvicorn.run(app, host="0.0.0.0", port=SERVER_PORT)
+    uvicorn.run(socket_app, host="0.0.0.0", port=SERVER_PORT)
