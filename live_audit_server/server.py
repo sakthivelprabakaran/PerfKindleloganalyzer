@@ -434,6 +434,11 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
     # Normalize username before saving
     normalized_username = normalize_username(user.username)
     
+    # Check if user already exists
+    existing_user = db.query(User).filter(User.username == normalized_username).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Username already registered")
+    
     # Hash the password
     hashed_pwd = hash_password(user.password)
     
@@ -482,6 +487,11 @@ def get_auditors(db: Session = Depends(get_db)):
 @app.post("/projects", response_model=ProjectResponse)
 def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
     """Admin creates a new project."""
+    # Check if project already exists
+    existing_project = db.query(Project).filter(Project.name == project.name).first()
+    if existing_project:
+        raise HTTPException(status_code=400, detail="Project already exists")
+        
     db_project = Project(name=project.name, description=project.description)
     db.add(db_project)
     db.commit()
