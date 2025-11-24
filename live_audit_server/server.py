@@ -9,6 +9,7 @@ from typing import List, Optional
 import pandas as pd
 import os
 import shutil
+import bcrypt
 
 # --- Auto-Backup Function ---
 def backup_database():
@@ -97,9 +98,10 @@ class AuditorBRD(Base):
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True)
+    username = Column(String, unique=True, index=True)
+    password_hash = Column(String, nullable=True)  # NEW: Hashed password
     full_name = Column(String)
-    role = Column(String)  # executor, auditor, admin
+    role = Column(String)  # admin, executor, auditor, admin
 
 class Project(Base):
     __tablename__ = "projects"
@@ -158,6 +160,18 @@ class UserCreate(BaseModel):
     username: str
     full_name: str
     role: str
+    password: str = "ChangeMe123!"  # Default password for new users
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+class LoginResponse(BaseModel):
+    success: bool
+    username: str
+    full_name: str
+    role: str
+    message: str = ""
 
 class UserResponse(BaseModel):
     id: int
@@ -213,6 +227,66 @@ def get_db():
 def normalize_username(username: str) -> str:
     """Normalize username to lowercase for case-insensitive matching."""
     return username.lower().strip() if username else ""
+
+# --- Password Utilities ---
+def hash_password(password: str) -> str:
+    """Hash a password using bcrypt."""
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def verify_password(password: str, hashed: str) -> bool:
+    """Verify a password against its hash."""
+    try:
+        return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+    except Exception:
+        return False
+
+# --- Authentication Endpoints ---
+@app.post("/login", response_model=LoginResponse)
+def login(credentials: UserLogin, db: Session = Depends(get_db)):
+    """Authenticate user and return user info."""
+    # Normalize username
+    normalized_username = normalize_username(credentials.username)
+    
+    # Find user
+    user = db.query(User).filter(User.username == normalized_username).first()
+    
+    if not user:
+        return LoginResponse(
+            success=False,
+            username="",
+            full_name="",
+            role="",
+            message="Invalid username or password"
+        )
+    
+    # Check if user has password set
+    if not user.password_hash:
+        return LoginResponse(
+            success=False,
+            username="",
+            full_name="",
+            role="",
+            message="Password not set. Please contact administrator."
+        )
+    
+    # Verify password
+    if not verify_password(credentials.password, user.password_hash):
+        return LoginResponse(
+            success=False,
+            username="",
+            full_name="",
+            role="",
+            message="Invalid username or password"
+        )
+    
+    # Success
+    return LoginResponse(
+        success=True,
+        username=user.username,
+        full_name=user.full_name,
+        role=user.role,
+        message="Login successful"
+    )
 
 @app.post("/submit_result", response_model=ResultResponse)
 def submit_result(result: ResultCreate, db: Session = Depends(get_db)):
@@ -353,10 +427,19 @@ def get_all_assignments(db: Session = Depends(get_db)):
 # User Management Endpoints
 @app.post("/users", response_model=UserResponse)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
-    """Admin creates a new user."""
+    """Admin creates a new user with hashed password."""
     # Normalize username before saving
     normalized_username = normalize_username(user.username)
-    db_user = User(username=normalized_username, full_name=user.full_name, role=user.role)
+    
+    # Hash the password
+    hashed_pwd = hash_password(user.password)
+    
+    db_user = User(
+        username=normalized_username, 
+        full_name=user.full_name, 
+        role=user.role,
+        password_hash=hashed_pwd
+    )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)

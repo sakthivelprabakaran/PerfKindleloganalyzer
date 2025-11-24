@@ -59,6 +59,30 @@ def test_create_users():
         except Exception as e:
             log_test(f"Create User: {user['username']}", False, str(e))
 
+def test_login():
+    """Test 2.5: Login functionality."""
+    # Test valid login
+    try:
+        response = requests.post(f"{SERVER_URL}/login", json={
+            "username": "ADMIN_USER",
+            "password": "ChangeMe123!"  # Default password
+        }, timeout=5)
+        success = response.status_code == 200 and response.json().get("success")
+        log_test("Login (Valid)", success, "Authenticated successfully")
+    except Exception as e:
+        log_test("Login (Valid)", False, str(e))
+        
+    # Test invalid password
+    try:
+        response = requests.post(f"{SERVER_URL}/login", json={
+            "username": "ADMIN_USER",
+            "password": "WrongPassword"
+        }, timeout=5)
+        success = response.status_code == 200 and not response.json().get("success")
+        log_test("Login (Invalid Password)", success, "Rejected correctly")
+    except Exception as e:
+        log_test("Login (Invalid Password)", False, str(e))
+
 def test_username_normalization():
     """Test 3: Username normalization (case-insensitive)."""
     # Try fetching with different cases
@@ -345,6 +369,7 @@ def main():
     print(f"\n{Colors.YELLOW}Running tests...{Colors.END}\n")
     
     test_create_users()
+    test_login()
     test_username_normalization()
     test_create_project()
     test_create_task_assignment()

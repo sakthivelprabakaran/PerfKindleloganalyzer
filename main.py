@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QStackedWidget, QCheckBox
 from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtCore import Qt
 
+from ui.login_window import LoginWindow
 from ui.universal_launcher import UniversalLauncher
 from ui.main_window import FinalKindleLogAnalyzer
 from performance_dashboard.main_window import MainWindow as PerformanceDashboard
@@ -21,6 +22,11 @@ class ApplicationContainer(QMainWindow):
 
         self.set_app_icon()
         self.dark_mode = False
+        
+        # User authentication state
+        self.current_user = None
+        self.user_role = None
+        self.user_full_name = None
 
         self.stacked_widget = QStackedWidget()
         self.setCentralWidget(self.stacked_widget)
@@ -31,7 +37,8 @@ class ApplicationContainer(QMainWindow):
             self.launch_exec_dashboard,
             self.launch_audit_report,
             self.launch_task_assignment,
-            self.toggle_dark_mode
+            self.toggle_dark_mode,
+            user_role="admin"  # Will be updated after login
         )
         self.log_analyzer = FinalKindleLogAnalyzer(back_to_launcher_callback=self.back_to_launcher)
         self.exec_dashboard = PerformanceDashboard(back_to_launcher_callback=self.back_to_launcher)
@@ -73,6 +80,27 @@ class ApplicationContainer(QMainWindow):
         """Switches the view back to the universal launcher."""
         self.setWindowTitle("Kindle Test Engineering Tools")
         self.stacked_widget.setCurrentWidget(self.universal_launcher)
+    
+    def on_login_success(self, username, role, full_name):
+        """Called when user successfully logs in."""
+        self.current_user = username
+        self.user_role = role
+        self.user_full_name = full_name
+        
+        # Update window title with user info
+        self.setWindowTitle(f"Kindle Test Engineering Tools - {full_name} ({role})")
+        
+        # Update launcher with user role
+        self.universal_launcher.set_user_role(role)
+        
+        # Show main application
+        self.show()
+    
+    def show_login(self):
+        """Show login window."""
+        login_window = LoginWindow(self.on_login_success)
+        login_window.show()
+        return login_window
 
     def toggle_dark_mode(self, checked):
         """Toggles the application's theme."""
@@ -129,7 +157,10 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"✗ Error loading icon: {e}")
 
+    # Create container (but don't show yet)
     container = ApplicationContainer()
-    container.show()
+    
+    # Show login window first
+    login_window = container.show_login()
 
     sys.exit(app.exec_())
