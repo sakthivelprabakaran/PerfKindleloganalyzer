@@ -70,13 +70,21 @@ class FinalKindleLogAnalyzer(QMainWindow):
         panel = QGroupBox("📁 Input & Processing")
         layout = QVBoxLayout()
 
-        # Header with dark mode toggle
+        # Header with dark mode toggle and back button
         header_layout = QHBoxLayout()
+        
+        # Back button (if callback provided)
+        if self.back_to_launcher_callback:
+            back_btn = QPushButton("← Back")
+            back_btn.clicked.connect(self.back_to_launcher_callback)
+            back_btn.setFixedWidth(100)
+            header_layout.addWidget(back_btn)
 
         title_label = QLabel("Kindle Log Analyzer")
         title_label.setStyleSheet("font-size: 18px; font-weight: bold; padding: 10px;")
         title_label.setAlignment(Qt.AlignCenter)
         header_layout.addWidget(title_label)
+        header_layout.addStretch()
         layout.addLayout(header_layout)
 
         # Test Case and Settings
@@ -228,11 +236,6 @@ class FinalKindleLogAnalyzer(QMainWindow):
         layout.addWidget(export_group)
 
         layout.addStretch()
-
-        if self.back_to_launcher_callback:
-            back_btn = QPushButton("Back to Launcher")
-            back_btn.clicked.connect(self.back_to_launcher_callback)
-            layout.addWidget(back_btn)
 
         panel.setLayout(layout)
         return panel

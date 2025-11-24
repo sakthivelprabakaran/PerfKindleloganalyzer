@@ -54,5 +54,27 @@
         "file_name": "P2_J19.1_Week_Week 1.xlsx",
         "status": "In Progress",
         "current_test_case_index": 0
+    },
+    {
+        "project_path": "/Users/sakthivelprabakaran/Documents/WEEK_46",
+        "device_name": "kindle",
+        "week": "Week 1",
+        "build_details": "j19.1_209",
+        "priority": "P0",
+        "active_sheet": "P0",
+        "file_name": "P0_kindle_Week_Week 1.xlsx",
+        "status": "In Progress",
+        "current_test_case_index": 2,
+        "task_assignment": {
+            "id": 1,
+            "project": "J19.1",
+            "suite": "P0",
+            "executor_username": "sakthimx",
+            "auditor_username": "akeerthg",
+            "status": "Assigned",
+            "created_at": "2025-11-23T22:00:06.108282"
+        },
+        "username": "sakthimx",
+        "server_url": "http://localhost:8000"
     }
 ]

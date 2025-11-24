@@ -166,11 +166,12 @@ class TaskAssignmentDialog(QDialog):
         }
 
 class TaskAssignmentWindow(QWidget):
-    def __init__(self):
+    def __init__(self, return_callback=None):
         super().__init__()
         self.setWindowTitle("Task Assignment Dashboard")
         self.resize(1000, 700)
         
+        self.return_callback = return_callback
         self.server_url = "http://localhost:8000"
         
         self.init_ui()
@@ -186,20 +187,31 @@ class TaskAssignmentWindow(QWidget):
     def init_ui(self):
         layout = QVBoxLayout(self)
         
-        # Header
-        header_layout = QHBoxLayout()
-        title_label = QLabel("<b>Task Assignment Dashboard (Admin)</b>")
-        title_label.setFont(QFont("Arial", 16, QFont.Bold))
+        # Header with back button
+        top_header_layout = QHBoxLayout()
+        back_btn = QPushButton("← Back")
+        back_btn.clicked.connect(self.return_callback)
+        back_btn.setFixedWidth(100)
         
+        title = QLabel("Task Assignment Dashboard (Admin)")
+        title.setFont(QFont("Arial", 16, QFont.Bold))
+        title.setAlignment(Qt.AlignCenter)
+        
+        top_header_layout.addWidget(back_btn)
+        top_header_layout.addWidget(title)
+        top_header_layout.addStretch()
+        layout.addLayout(top_header_layout)
+        
+        # Server URL input
+        server_input_layout = QHBoxLayout()
         server_label = QLabel("Server:")
         self.server_input = QLineEdit(self.server_url)
         self.server_input.setFixedWidth(200)
         
-        header_layout.addWidget(title_label)
-        header_layout.addStretch()
-        header_layout.addWidget(server_label)
-        header_layout.addWidget(self.server_input)
-        layout.addLayout(header_layout)
+        server_input_layout.addStretch()
+        server_input_layout.addWidget(server_label)
+        server_input_layout.addWidget(self.server_input)
+        layout.addLayout(server_input_layout)
         
         # Tabs
         self.tabs = QTabWidget()

@@ -169,6 +169,19 @@ class ExecutionDashboard(QWidget):
         session_layout.addLayout(live_layout, 4, 0, 1, 2)
         
         layout.addWidget(session_group)
+        
+        # Save Buttons - Moved to top for easy access
+        save_layout = QHBoxLayout()
+        
+        save_btn = QPushButton("💾 Save")
+        save_btn.clicked.connect(self.save_session)
+        save_layout.addWidget(save_btn)
+
+        save_return_btn = QPushButton("💾 Save & Return")
+        save_return_btn.clicked.connect(self.save_and_return)
+        save_layout.addWidget(save_return_btn)
+        
+        layout.addLayout(save_layout)
 
         # Timer
         timer_group = QGroupBox("⏱️ Timer")
@@ -280,19 +293,6 @@ class ExecutionDashboard(QWidget):
         layout.addWidget(notes_group)
 
         layout.addStretch()
-
-        # Save Buttons
-        save_layout = QHBoxLayout()
-        
-        save_btn = QPushButton("💾 Save")
-        save_btn.clicked.connect(self.save_session)
-        save_layout.addWidget(save_btn)
-
-        save_return_btn = QPushButton("💾 Save & Return")
-        save_return_btn.clicked.connect(self.save_and_return)
-        save_layout.addWidget(save_return_btn)
-        
-        layout.addLayout(save_layout)
 
         # Create and configure the scroll area
         scroll_area = QScrollArea()

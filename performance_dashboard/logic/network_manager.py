@@ -12,6 +12,7 @@ class NetworkManager(QObject):
         super().__init__()
         self.server_url = server_url
         self.executor_name = executor_name
+        self.timeout = 10  # 10 second timeout for all requests
         
         # Use QTimer instead of background thread
         self.poll_timer = QTimer()
@@ -39,14 +40,14 @@ class NetworkManager(QObject):
                 "value": float(value) if isinstance(value, (int, float)) else 0.0
             }
             # Send immediately (synchronous is fine since it's fast)
-            requests.post(f"{self.server_url}/submit_result", json=payload, timeout=2)
+            requests.post(f"{self.server_url}/submit_result", json=payload, timeout=self.timeout)
         except Exception as e:
             print(f"Failed to submit result: {e}")
 
     def _poll_notifications(self):
         """Polls for notifications (called by QTimer)."""
         try:
-            response = requests.get(f"{self.server_url}/notifications/{self.executor_name}", timeout=3)
+            response = requests.get(f"{self.server_url}/notifications/{self.executor_name}", timeout=self.timeout)
             if response.status_code == 200:
                 notifications = response.json()
                 for note in notifications:
@@ -54,18 +55,18 @@ class NetworkManager(QObject):
                     # Only show notifications we haven't seen yet
                     if note_id not in self.seen_notification_ids:
                         self.seen_notification_ids.add(note_id)
-                        msg = f"Test Case '{note['test_case_name']}' was REJECTED.\nComment: {note['auditor_comment']}"
+                        msg = f"Test Case '{note['test_case_name']}' was REJECTED.\\nComment: {note['auditor_comment']}"
                         self.notification_received.emit("Audit Alert", msg)
                         
                         # Mark as read
-                        requests.post(f"{self.server_url}/mark_read/{note_id}", timeout=2)
+                        requests.post(f"{self.server_url}/mark_read/{note_id}", timeout=self.timeout)
         except Exception as e:
             print(f"Polling error: {e}")
 
     def fetch_dashboard_data(self):
         """Fetches all latest results for the Auditor dashboard."""
         try:
-            response = requests.get(f"{self.server_url}/live_dashboard", timeout=5)
+            response = requests.get(f"{self.server_url}/live_dashboard", timeout=self.timeout)
             if response.status_code == 200:
                 return response.json()
         except Exception as e:
@@ -76,7 +77,7 @@ class NetworkManager(QObject):
         """Updates the status of a test result (Approve/Reject)."""
         try:
             payload = {"status": status, "auditor_comment": comment}
-            requests.post(f"{self.server_url}/update_status/{result_id}", json=payload, timeout=5)
+            requests.post(f"{self.server_url}/update_status/{result_id}", json=payload, timeout=self.timeout)
             return True
         except Exception as e:
             print(f"Update error: {e}")

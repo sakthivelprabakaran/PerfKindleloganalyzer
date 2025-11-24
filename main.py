@@ -36,7 +36,7 @@ class ApplicationContainer(QMainWindow):
         self.log_analyzer = FinalKindleLogAnalyzer(back_to_launcher_callback=self.back_to_launcher)
         self.exec_dashboard = PerformanceDashboard(back_to_launcher_callback=self.back_to_launcher)
         self.audit_window = AuditWindow(return_callback=self.back_to_launcher)
-        self.task_assignment_window = TaskAssignmentWindow()
+        self.task_assignment_window = TaskAssignmentWindow(return_callback=self.back_to_launcher)
 
         # Add them to the stack
         self.stacked_widget.addWidget(self.universal_launcher)
@@ -88,15 +88,22 @@ class ApplicationContainer(QMainWindow):
                 self.setStyleSheet(f.read())
 
     def set_app_icon(self):
-        """Sets the application icon based on the operating system."""
-        icon_path = ""
-        if sys.platform == "darwin":  # macOS
-            icon_path = os.path.join("assets", "icons", "Mac.icns")
-        elif sys.platform == "win32":  # Windows
-            icon_path = os.path.join("assets", "icons", "win.ico")
-
-        if os.path.exists(icon_path):
-            self.setWindowIcon(QIcon(icon_path))
+        """Sets the application icon based on the platform."""
+        try:
+            # Determine the correct icon file based on platform
+            if sys.platform == "darwin":  # macOS
+                icon_path = os.path.join("assets", "icons", "Mac.icns")
+            elif sys.platform == "win32":  # Windows
+                icon_path = os.path.join("assets", "icons", "win.ico")
+            else:  # Linux and others
+                icon_path = os.path.join("assets", "icons", "win.ico")
+            
+            if os.path.exists(icon_path):
+                self.setWindowIcon(QIcon(icon_path))
+            else:
+                print(f"Warning: Icon file not found at {icon_path}")
+        except Exception as e:
+            print(f"Error setting app icon: {e}")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
@@ -104,6 +111,23 @@ if __name__ == '__main__':
     # Set application-wide font
     font = QFont("Arial", 10)
     app.setFont(font)
+    
+    # Set application icon (for Dock/taskbar)
+    try:
+        if sys.platform == "darwin":  # macOS
+            icon_path = os.path.join("assets", "icons", "Mac.icns")
+        elif sys.platform == "win32":  # Windows
+            icon_path = os.path.join("assets", "icons", "win.ico")
+        else:  # Linux
+            icon_path = os.path.join("assets", "icons", "win.ico")
+        
+        if os.path.exists(icon_path):
+            app.setWindowIcon(QIcon(icon_path))
+            print(f"✓ Icon loaded: {icon_path}")
+        else:
+            print(f"⚠ Icon not found: {icon_path}")
+    except Exception as e:
+        print(f"✗ Error loading icon: {e}")
 
     container = ApplicationContainer()
     container.show()

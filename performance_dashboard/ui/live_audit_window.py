@@ -63,9 +63,9 @@ class LiveAuditWindow(QWidget):
         
         # Table
         self.table = QTableWidget()
-        self.table.setColumnCount(7)
+        self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels([
-            "ID", "Test Case", "Executor", "Value (s)", "Time", "Status", "Actions"
+            "ID", "Test Case", "Executor", "Value (s)", "BRD Ref", "Deviation %", "Status", "Actions"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         layout.addWidget(self.table)
@@ -120,10 +120,27 @@ class LiveAuditWindow(QWidget):
             value_item = QTableWidgetItem(f"{row['value']:.3f}")
             value_item.setForeground(QColor("black"))
             
-            # Format timestamp
-            ts = row['timestamp'].split('T')[1].split('.')[0] # Simple parsing
-            time_item = QTableWidgetItem(ts)
-            time_item.setForeground(QColor("black"))
+            # BRD Reference
+            if row.get('brd_reference'):
+                brd_item = QTableWidgetItem(f"{row['brd_reference']:.3f}")
+            else:
+                brd_item = QTableWidgetItem("N/A")
+            brd_item.setForeground(QColor("black"))
+            
+            # Deviation %
+            if row.get('deviation_percent') is not None:
+                dev_val = row['deviation_percent']
+                dev_item = QTableWidgetItem(f"{dev_val:+.2f}%")
+                # Color code based on deviation
+                if abs(dev_val) == 0:
+                    dev_item.setBackground(QColor("#d4edda"))  # Green
+                elif abs(dev_val) < 10:
+                    dev_item.setBackground(QColor("#fff3cd"))  # Yellow
+                else:
+                    dev_item.setBackground(QColor("#f8d7da"))  # Red
+            else:
+                dev_item = QTableWidgetItem("N/A")
+            dev_item.setForeground(QColor("black"))
             
             status_item = QTableWidgetItem(row['status'])
             status_item.setForeground(QColor("black"))
@@ -132,10 +149,11 @@ class LiveAuditWindow(QWidget):
             self.table.setItem(i, 1, name_item)
             self.table.setItem(i, 2, executor_item)
             self.table.setItem(i, 3, value_item)
-            self.table.setItem(i, 4, time_item)
-            self.table.setItem(i, 5, status_item)
+            self.table.setItem(i, 4, brd_item)
+            self.table.setItem(i, 5, dev_item)
+            self.table.setItem(i, 6, status_item)
             
-            # Color coding (background only)
+            # Color coding for status column
             bg_color = QColor("white")
             if row['status'] == "Pending":
                 bg_color = QColor("#fff3cd") # Yellow
@@ -144,9 +162,7 @@ class LiveAuditWindow(QWidget):
             elif row['status'] == "Rejected":
                 bg_color = QColor("#f8d7da") # Red
             
-            for j in range(6):
-                if self.table.item(i, j):
-                    self.table.item(i, j).setBackground(bg_color)
+            status_item.setBackground(bg_color)
             
             # Actions
             if row['status'] == "Pending":
@@ -164,14 +180,14 @@ class LiveAuditWindow(QWidget):
                 
                 btn_layout.addWidget(approve_btn)
                 btn_layout.addWidget(reject_btn)
-                self.table.setCellWidget(i, 6, btn_widget)
+                self.table.setCellWidget(i, 7, btn_widget)
             else:
                 # Clear buttons if status changed
-                self.table.removeCellWidget(i, 6)
+                self.table.removeCellWidget(i, 7)
                 if row['status'] == "Rejected":
                     comment_item = QTableWidgetItem(f"Reason: {row['auditor_comment']}")
                     comment_item.setForeground(QColor("black"))
-                    self.table.setItem(i, 6, comment_item)
+                    self.table.setItem(i, 7, comment_item)
 
     def approve_result(self, row_data):
         self.network_manager.update_status(row_data['id'], "Approved", "Looks good")

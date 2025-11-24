@@ -548,10 +548,23 @@ class AuditWindow(QWidget):
             self.assignments_table.setItem(i, 2, executor_item)
             
             # BRD Status (check if BRD exists)
-            # TODO: Query auditor_brds table to check status
-            status_item = QTableWidgetItem("Not Uploaded")
-            status_item.setForeground(QColor("#856404"))
-            status_item.setBackground(QColor("#fff3cd"))
+            try:
+                import requests
+                server_url = self.auditor_server_input.text().strip()
+                response = requests.get(f"{server_url}/check_brd/{assignment['project']}/{assignment['suite']}", timeout=2)
+                if response.status_code == 200 and response.json().get('exists'):
+                    status_item = QTableWidgetItem("✓ Uploaded")
+                    status_item.setForeground(QColor("#155724"))
+                    status_item.setBackground(QColor("#d4edda"))
+                else:
+                    status_item = QTableWidgetItem("Not Uploaded")
+                    status_item.setForeground(QColor("#856404"))
+                    status_item.setBackground(QColor("#fff3cd"))
+            except:
+                status_item = QTableWidgetItem("Unknown")
+                status_item.setForeground(QColor("#856404"))
+                status_item.setBackground(QColor("#fff3cd"))
+            
             self.assignments_table.setItem(i, 3, status_item)
             
             # Upload BRD Button
@@ -579,23 +592,34 @@ class AuditWindow(QWidget):
             return
         
         try:
-            # Read BRD file
-            df = pd.read_excel(file_path)
+            import requests
+            server_url = self.auditor_server_input.text().strip()
+            auditor_username = self.auditor_username_input.text().strip()
             
-            # TODO: Send BRD data to server for storage in auditor_brds table
-            # For now, just show success
-            QMessageBox.information(
-                self,
-                "BRD Uploaded",
-                f"BRD uploaded successfully for:\n\n"
-                f"Project: {assignment['project']}\n"
-                f"Suite: {assignment['suite']}\n"
-                f"File: {file_path.split('/')[-1]}\n\n"
-                f"Server-side storage will be implemented next."
-            )
+            # Send file to server
+            with open(file_path, 'rb') as f:
+                files = {'file': (os.path.basename(file_path), f, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')}
+                data = {
+                    'auditor_username': auditor_username,
+                    'project': assignment['project'],
+                    'suite': assignment['suite']
+                }
+                response = requests.post(f"{server_url}/upload_brd", files=files, data=data, timeout=10)
             
-            # Refresh table to update status
-            self.fetch_my_assignments()
+            if response.status_code == 200:
+                QMessageBox.information(
+                    self,
+                    "BRD Uploaded",
+                    f"BRD uploaded successfully!\n\n"
+                    f"Project: {assignment['project']}\n"
+                    f"Suite: {assignment['suite']}\n"
+                    f"File: {os.path.basename(file_path)}\n\n"
+                    f"Auto-comparison is now active for this suite."
+                )
+                # Refresh table to update status
+                self.fetch_my_assignments()
+            else:
+                QMessageBox.warning(self, "Upload Failed", f"Server returned error: {response.text}")
         except Exception as e:
             QMessageBox.critical(self, "Upload Error", f"Failed to upload BRD: {e}")
 

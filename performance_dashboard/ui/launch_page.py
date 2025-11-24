@@ -2,9 +2,10 @@ import pandas as pd
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QGroupBox, QLabel, QLineEdit,
     QComboBox, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView,
-    QFileDialog, QMessageBox
+    QFileDialog, QMessageBox, QFrame
 )
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QFont
 
 class LauncherScreen(QWidget):
     """
@@ -141,8 +142,30 @@ class LauncherScreen(QWidget):
 
     def create_right_panel(self):
         """Creates the right panel for displaying and managing saved sessions."""
-        panel = QGroupBox("Saved Sessions")
+        panel = QGroupBox("📝 New Session")
         layout = QVBoxLayout()
+        
+        # Header with back button
+        if self.back_to_launcher_callback:
+            header_layout = QHBoxLayout()
+            back_btn = QPushButton("← Back")
+            back_btn.clicked.connect(self.back_to_launcher_callback)
+            back_btn.setFixedWidth(100)
+            
+            title_label = QLabel("Performance Execution Dashboard")
+            title_label.setFont(QFont("Arial", 14, QFont.Bold))
+            title_label.setAlignment(Qt.AlignCenter)
+            
+            header_layout.addWidget(back_btn)
+            header_layout.addWidget(title_label)
+            header_layout.addStretch()
+            layout.addLayout(header_layout)
+            
+            # Separator
+            separator = QFrame()
+            separator.setFrameShape(QFrame.HLine)
+            separator.setFrameShadow(QFrame.Sunken)
+            layout.addWidget(separator)
         panel.setLayout(layout)
 
         # Search bar
@@ -174,11 +197,6 @@ class LauncherScreen(QWidget):
         buttons_layout.addWidget(open_session_btn)
         buttons_layout.addWidget(remove_session_btn)
         layout.addLayout(buttons_layout)
-
-        if self.back_to_launcher_callback:
-            back_btn = QPushButton("Back to Main Launcher")
-            back_btn.clicked.connect(self.back_to_launcher_callback)
-            layout.addWidget(back_btn)
 
         return panel
 
