@@ -77,9 +77,10 @@ class LiveAuditWindow(QWidget):
         
         # Table
         self.table = QTableWidget()
-        self.table.setColumnCount(8)
+        self.table.setColumnCount(10)  # Increased from 8 to 10
         self.table.setHorizontalHeaderLabels([
-            "ID", "Test Case", "Executor", "Value (s)", "BRD Ref", "Deviation %", "Status", "Actions"
+            "ID", "Test Case", "Executor", "Value (s)", "BRD Ref", "Deviation %", 
+            "Prev Value", "Deviation % (Prev)", "Status", "Actions"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         layout.addWidget(self.table)
@@ -199,6 +200,28 @@ class LiveAuditWindow(QWidget):
                 dev_item = QTableWidgetItem("N/A")
             dev_item.setForeground(QColor("black"))
             
+            # Previous Value
+            if row.get('previous_value'):
+                prev_item = QTableWidgetItem(f"{row['previous_value']:.3f}")
+            else:
+                prev_item = QTableWidgetItem("N/A")
+            prev_item.setForeground(QColor("black"))
+            
+            # Deviation % from Previous
+            if row.get('deviation_from_previous') is not None:
+                dev_prev_val = row['deviation_from_previous']
+                dev_prev_item = QTableWidgetItem(f"{dev_prev_val:+.2f}%")
+                # Same color coding as BRD deviation
+                if dev_prev_val < 0:
+                    dev_prev_item.setBackground(QColor("#d4edda"))  # Green (performance improved)
+                elif 0 <= dev_prev_val <= 10:
+                    dev_prev_item.setBackground(QColor("#fff3cd"))  # Yellow (acceptable range)
+                else:
+                    dev_prev_item.setBackground(QColor("#f8d7da"))  # Red (regression detected!)
+            else:
+                dev_prev_item = QTableWidgetItem("N/A")
+            dev_prev_item.setForeground(QColor("black"))
+            
             status_item = QTableWidgetItem(row['status'])
             status_item.setForeground(QColor("black"))
             
@@ -208,7 +231,9 @@ class LiveAuditWindow(QWidget):
             self.table.setItem(i, 3, value_item)
             self.table.setItem(i, 4, brd_item)
             self.table.setItem(i, 5, dev_item)
-            self.table.setItem(i, 6, status_item)
+            self.table.setItem(i, 6, prev_item)
+            self.table.setItem(i, 7, dev_prev_item)
+            self.table.setItem(i, 8, status_item)
             
             # Color coding for status column
             bg_color = QColor("white")
@@ -237,10 +262,10 @@ class LiveAuditWindow(QWidget):
                 
                 btn_layout.addWidget(approve_btn)
                 btn_layout.addWidget(reject_btn)
-                self.table.setCellWidget(i, 7, btn_widget)
+                self.table.setCellWidget(i, 9, btn_widget)
             else:
                 # Clear buttons if status changed
-                self.table.removeCellWidget(i, 7)
+                self.table.removeCellWidget(i, 9)
                 if row['status'] == "Rejected":
                     comment_item = QTableWidgetItem(f"Reason: {row['auditor_comment']}")
                     comment_item.setForeground(QColor("black"))
