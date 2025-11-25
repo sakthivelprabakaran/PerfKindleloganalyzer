@@ -532,6 +532,10 @@ class ExecutionDashboard(QWidget):
             self.baseline_group.setVisible(False)
             self.baseline_mode_checkbox.setChecked(False)
             self.baseline_mode_checkbox.setEnabled(False)
+            
+            # Reset baseline data to prevent leakage to other test cases
+            self.baseline_iterations = []
+            self.baseline_build = ""
 
             self.tc_id_label.setText(str(self.current_test_case.get("Test Case ID", "")))
             self.tc_name_label.setText(str(self.current_test_case.get("Test Case Name", "")))
@@ -636,6 +640,54 @@ class ExecutionDashboard(QWidget):
                 self.baseline_mode_checkbox.setChecked(False)  # Exit baseline mode
                 self.reset_timer_and_iterations()
                 self.update_results_tab()
+                
+                # Check if normal iterations are also complete, if so, submit result
+                # We need to check if we have 5 normal iterations saved
+                # Since we are in baseline mode, self.current_iteration might be reset, so we check the data
+                
+                # Get current test case data again to be sure
+                active_sheet = self.state.get_active_sheet()
+                current_index = self.state.get_current_test_case_index()
+                tc_data = self.data_manager.get_test_case(active_sheet, current_index)
+                
+                normal_iterations_count = 0
+                if tc_data:
+                    for i in range(1, 6):
+                        val = tc_data.get(f"Iteration{i}", "")
+                        if pd.notna(val) and str(val).strip() != "":
+                            normal_iterations_count += 1
+                
+                if normal_iterations_count == 5 and self.live_mode:
+                    # Trigger submission logic (duplicate of logic below, but needed here)
+                    tc_id = tc_data.get("Test Case ID", "")
+                    tc_name = tc_data.get("Test Case Name", "")
+                    
+                    # Calculate average of normal iterations
+                    iteration_values = []
+                    for i in range(1, 6):
+                        try:
+                            val = float(tc_data.get(f"Iteration{i}", 0))
+                            iteration_values.append(val)
+                        except:
+                            pass
+                            
+                    if iteration_values:
+                        average_value = sum(iteration_values) / len(iteration_values)
+                        suite_name = self.state.get_active_sheet()
+                        project_name = self.state.current_session.get('project', 'KindleLogAnalyzer') if self.state.current_session else 'KindleLogAnalyzer'
+                        notes = self.notes_input.toPlainText().strip()
+                        
+                        # Use the just-calculated baseline data
+                        baseline_str = f"Build: {self.baseline_build}, Iterations: {self.baseline_iterations}, Avg: {avg:.3f}"
+                        
+                        try:
+                            self.network_manager.submit_result(
+                                tc_id, tc_name, f"{average_value:.3f}", 
+                                suite_name=suite_name, project_name=project_name,
+                                notes=notes, baseline=baseline_str
+                            )
+                        except Exception as e:
+                            print(f"Error submitting result from baseline completion: {e}")
             return
 
 
