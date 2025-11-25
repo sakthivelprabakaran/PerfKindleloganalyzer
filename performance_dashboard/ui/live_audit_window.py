@@ -188,13 +188,13 @@ class LiveAuditWindow(QWidget):
             if row.get('deviation_percent') is not None:
                 dev_val = row['deviation_percent']
                 dev_item = QTableWidgetItem(f"{dev_val:+.2f}%")
-                # Color code based on deviation
-                if abs(dev_val) == 0:
-                    dev_item.setBackground(QColor("#d4edda"))  # Green
-                elif abs(dev_val) < 10:
-                    dev_item.setBackground(QColor("#fff3cd"))  # Yellow
+                # Color code based on deviation (NOT using abs!)
+                if dev_val < 0:
+                    dev_item.setBackground(QColor("#d4edda"))  # Green (performance improved)
+                elif 0 <= dev_val <= 10:
+                    dev_item.setBackground(QColor("#fff3cd"))  # Yellow (acceptable range)
                 else:
-                    dev_item.setBackground(QColor("#f8d7da"))  # Red
+                    dev_item.setBackground(QColor("#f8d7da"))  # Red (needs attention)
             else:
                 dev_item = QTableWidgetItem("N/A")
             dev_item.setForeground(QColor("black"))
