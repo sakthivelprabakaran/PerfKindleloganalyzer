@@ -76,11 +76,12 @@ class LiveAuditWindow(QWidget):
         layout.addLayout(search_layout)
         
         # Table
+        # Table
         self.table = QTableWidget()
-        self.table.setColumnCount(10)  # Increased from 8 to 10
+        self.table.setColumnCount(12)  # Increased from 10 to 12
         self.table.setHorizontalHeaderLabels([
             "ID", "Test Case", "Executor", "Value (s)", "BRD Ref", "Deviation %", 
-            "Prev Value", "Deviation % (Prev)", "Status", "Actions"
+            "Prev Value", "Deviation % (Prev)", "Notes", "Baseline", "Status", "Actions"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         layout.addWidget(self.table)
@@ -222,6 +223,18 @@ class LiveAuditWindow(QWidget):
                 dev_prev_item = QTableWidgetItem("N/A")
             dev_prev_item.setForeground(QColor("black"))
             
+            # Notes
+            notes_text = row.get('notes', '')
+            notes_item = QTableWidgetItem(notes_text)
+            notes_item.setToolTip(notes_text)  # Show full text on hover
+            notes_item.setForeground(QColor("black"))
+            
+            # Baseline
+            baseline_text = row.get('baseline', '')
+            baseline_item = QTableWidgetItem(baseline_text)
+            baseline_item.setToolTip(baseline_text)  # Show full text on hover
+            baseline_item.setForeground(QColor("black"))
+            
             status_item = QTableWidgetItem(row['status'])
             status_item.setForeground(QColor("black"))
             
@@ -233,7 +246,9 @@ class LiveAuditWindow(QWidget):
             self.table.setItem(i, 5, dev_item)
             self.table.setItem(i, 6, prev_item)
             self.table.setItem(i, 7, dev_prev_item)
-            self.table.setItem(i, 8, status_item)
+            self.table.setItem(i, 8, notes_item)
+            self.table.setItem(i, 9, baseline_item)
+            self.table.setItem(i, 10, status_item)
             
             # Color coding for status column
             bg_color = QColor("white")
@@ -262,10 +277,10 @@ class LiveAuditWindow(QWidget):
                 
                 btn_layout.addWidget(approve_btn)
                 btn_layout.addWidget(reject_btn)
-                self.table.setCellWidget(i, 9, btn_widget)
+                self.table.setCellWidget(i, 11, btn_widget)  # Changed from 9 to 11
             else:
                 # Clear buttons if status changed
-                self.table.removeCellWidget(i, 9)
+                self.table.removeCellWidget(i, 11)  # Changed from 9 to 11
                 if row['status'] == "Rejected":
                     comment_item = QTableWidgetItem(f"Reason: {row['auditor_comment']}")
                     comment_item.setForeground(QColor("black"))

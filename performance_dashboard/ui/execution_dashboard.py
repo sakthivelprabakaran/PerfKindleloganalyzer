@@ -702,8 +702,19 @@ class ExecutionDashboard(QWidget):
                     average_value = sum(iteration_values) / len(iteration_values)
                     suite_name = self.state.get_active_sheet()  # Get the current suite (P0, P1, P2, etc.)
                     project_name = self.state.current_session.get('project', 'KindleLogAnalyzer') if self.state.current_session else 'KindleLogAnalyzer'
+                    
+                    # Get notes and baseline from UI
+                    notes = self.notes_input.toPlainText().strip()
+                    baseline_data = ""
+                    if hasattr(self, 'baseline_iterations') and self.baseline_iterations:
+                        baseline_data = f"Build: {self.baseline_build}, Iterations: {self.baseline_iterations}, Avg: {sum(self.baseline_iterations)/len(self.baseline_iterations):.3f}"
+                    
                     try:
-                        self.network_manager.submit_result(tc_id, tc_name, f"{average_value:.3f}", suite_name=suite_name, project_name=project_name)
+                        self.network_manager.submit_result(
+                            tc_id, tc_name, f"{average_value:.3f}", 
+                            suite_name=suite_name, project_name=project_name,
+                            notes=notes, baseline=baseline_data
+                        )
                     except Exception as e:
                         print(f"Error submitting result: {e}")
             

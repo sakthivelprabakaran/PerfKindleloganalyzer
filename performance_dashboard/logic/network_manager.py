@@ -201,7 +201,7 @@ class NetworkManager(QObject):
             except Exception as e:
                 self.log(f"Error during disconnect: {e}")
 
-    def submit_result(self, test_case_id, test_case_name, value, suite_name="Performance", project_name="KindleLogAnalyzer"):
+    def submit_result(self, test_case_id, test_case_name, value, suite_name="Performance", project_name="KindleLogAnalyzer", notes="", baseline=""):
         """Submits a test result to the server."""
         try:
             # Ensure value is a float string
@@ -213,7 +213,9 @@ class NetworkManager(QObject):
                 "value": value_float,
                 "executor_name": self.executor_name,
                 "project_name": project_name,
-                "suite_name": suite_name
+                "suite_name": suite_name,
+                "notes": notes,
+                "baseline": baseline
             }
             
             self.log(f"Submitting result: {test_case_name} = {value_float} (suite: {suite_name})")
