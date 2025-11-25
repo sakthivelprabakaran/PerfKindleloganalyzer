@@ -198,8 +198,10 @@ class DataManager:
             print("DataManager: No workbook data loaded, nothing to save")
             return None
 
-        save_thread = SaveThread(self.file_path, self.workbook)
-        return save_thread
+        # Create and start the thread
+        self.save_thread = SaveThread(self.file_path, self.workbook)
+        self.save_thread.start()
+        return self.save_thread
 
     def get_all_results(self, sheet_name):
         """Retrieves results for all test cases from a sheet for the Results tab."""
