@@ -515,7 +515,7 @@ def submit_result(result: ResultCreate, current_user: User = Depends(get_current
                         else:
                             auto_status = "Pending"   # ≥ 10% → Flagged for attention
             except Exception as e:
-                print(f"Error reading BRD: {e}")
+                print(f"❌ Error reading BRD: {e}")
     
     db_result = TestResult(
         test_case_id=result.test_case_id,

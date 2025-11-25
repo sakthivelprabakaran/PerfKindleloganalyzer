@@ -129,25 +129,11 @@ class LiveAuditWindow(QWidget):
         
         if self.suite_filter:
             # Filter by suite_name field (not test_case_id prefix!)
-            print(f"🔍 DEBUG: Filtering by suite: '{self.suite_filter}'")
-            print(f"🔍 DEBUG: Before suite filter: {len(filtered_data)} results")
-            # Show sample suite_name values for debugging
-            if len(filtered_data) > 0:
-                sample_suites = set([row.get('suite_name', 'MISSING') for row in filtered_data[:5]])
-                print(f"🔍 DEBUG: Sample suite_name values in data: {sample_suites}")
             filtered_data = [row for row in filtered_data if row.get('suite_name', '') == self.suite_filter]
-            print(f"🔍 DEBUG: After suite filter: {len(filtered_data)} results")
-            if len(filtered_data) > 0:
-                print(f"🔍 DEBUG: Sample suite_name: '{filtered_data[0].get('suite_name', 'N/A')}'")
         
         if self.executor_filter:
             # Filter by executor username
-            print(f"🔍 DEBUG: Filtering by executor: '{self.executor_filter}'")
-            print(f"🔍 DEBUG: Before executor filter: {len(filtered_data)} results")
             filtered_data = [row for row in filtered_data if row.get('executor_name', '') == self.executor_filter]
-            print(f"🔍 DEBUG: After executor filter: {len(filtered_data)} results")
-            if len(filtered_data) > 0:
-                print(f"🔍 DEBUG: Sample executor_name: '{filtered_data[0].get('executor_name', 'N/A')}'")
         
         self.table.setRowCount(len(filtered_data))
         for i, row in enumerate(filtered_data):

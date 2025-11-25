@@ -701,8 +701,9 @@ class ExecutionDashboard(QWidget):
                 if iteration_values:
                     average_value = sum(iteration_values) / len(iteration_values)
                     suite_name = self.state.get_active_sheet()  # Get the current suite (P0, P1, P2, etc.)
+                    project_name = self.state.current_session.get('project', 'KindleLogAnalyzer') if self.state.current_session else 'KindleLogAnalyzer'
                     try:
-                        self.network_manager.submit_result(tc_id, tc_name, f"{average_value:.3f}", suite_name=suite_name)
+                        self.network_manager.submit_result(tc_id, tc_name, f"{average_value:.3f}", suite_name=suite_name, project_name=project_name)
                     except Exception as e:
                         print(f"Error submitting result: {e}")
             
@@ -1018,7 +1019,8 @@ class ExecutionDashboard(QWidget):
                     avg_float = float(average)
                     if avg_float > 0:  # Valid average
                         suite_name = self.state.get_active_sheet()  # Get current suite
-                        self.network_manager.submit_result(tc_id, tc_name, f"{avg_float:.3f}", suite_name=suite_name)
+                        project_name = self.state.current_session.get('project', 'KindleLogAnalyzer') if self.state.current_session else 'KindleLogAnalyzer'
+                        self.network_manager.submit_result(tc_id, tc_name, f"{avg_float:.3f}", suite_name=suite_name, project_name=project_name)
                         submitted_count += 1
                 except Exception as e:
                     print(f"Failed to submit {tc_name}: {e}")
