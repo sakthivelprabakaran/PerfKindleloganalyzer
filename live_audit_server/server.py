@@ -125,7 +125,9 @@ class TestResult(Base):
     suite_name = Column(String, index=True)  # Suite name (P0, P1, P2, etc.) - indexed for filtering
     value = Column(Float)
     brd_reference = Column(Float, nullable=True)  # Reference value from BRD
-    deviation_percent = Column(Float, nullable=True)  # Auto-calculated deviation
+    deviation_percent = Column(Float, nullable=True)  # Auto-calculated deviation from BRD
+    previous_value = Column(Float, nullable=True)  # Previous build value from BRD
+    deviation_from_previous = Column(Float, nullable=True)  # Auto-calculated deviation from previous build
     timestamp = Column(DateTime, default=datetime.now)
     status = Column(String, default="Pending") # Pending, Approved, Retest
     auditor_comment = Column(String, default="")
@@ -194,6 +196,8 @@ class ResultResponse(BaseModel):
     value: float
     brd_reference: Optional[float] = None
     deviation_percent: Optional[float] = None
+    previous_value: Optional[float] = None
+    deviation_from_previous: Optional[float] = None
     timestamp: datetime
     status: str
     auditor_comment: str
@@ -501,9 +505,24 @@ def submit_result(result: ResultCreate, current_user: User = Depends(get_current
                 matching_row = df[df['Test Case ID'] == result.test_case_id]
                 
                 if not matching_row.empty:
+                    # Read Reference Value (BRD)
                     brd_reference = float(matching_row.iloc[0]['Reference Value'])
                     
-                    # Calculate deviation percentage
+                    # Read Previous Value if column exists
+                    previous_value = None
+                    deviation_from_previous = None
+                    if 'Previous Value' in df.columns:
+                        prev_val_raw = matching_row.iloc[0]['Previous Value']
+                        if pd.notna(prev_val_raw):  # Check if not NaN/NULL
+                            try:
+                                previous_value = float(prev_val_raw)
+                                # Calculate deviation from previous build
+                                if previous_value > 0:
+                                    deviation_from_previous = ((result.value - previous_value) / previous_value) * 100
+                            except (ValueError, TypeError):
+                                pass  # Keep as None if can't convert
+                    
+                    # Calculate deviation percentage from BRD Reference
                     if brd_reference > 0:
                         deviation_percent = ((result.value - brd_reference) / brd_reference) * 100
                         
@@ -532,6 +551,8 @@ def submit_result(result: ResultCreate, current_user: User = Depends(get_current
         existing_result.value = result.value
         existing_result.brd_reference = brd_reference
         existing_result.deviation_percent = deviation_percent
+        existing_result.previous_value = previous_value
+        existing_result.deviation_from_previous = deviation_from_previous
         existing_result.timestamp = datetime.now()  # Update timestamp to latest submission
         existing_result.status = auto_status  # Reset status to Pending for re-review
         existing_result.auditor_comment = ""  # Clear previous auditor comment
@@ -549,6 +570,8 @@ def submit_result(result: ResultCreate, current_user: User = Depends(get_current
             value=result.value,
             brd_reference=brd_reference,
             deviation_percent=deviation_percent,
+            previous_value=previous_value,
+            deviation_from_previous=deviation_from_previous,
             status=auto_status
         )
         db.add(db_result)
