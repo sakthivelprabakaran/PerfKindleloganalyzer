@@ -313,9 +313,16 @@ class LiveAuditWindow(QWidget):
     
     def generate_report(self):
         """Generate audit report from current Live Monitor data."""
+        # Ensure we have a network manager and fetch fresh data if needed
+        self.ensure_network_manager()
+        
+        if not self.data:
+            # Try to fetch data first
+            self.refresh_data()
+            
         if not self.data:
             from PyQt5.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "No Data", "No test results available to generate report.")
+            QMessageBox.warning(self, "No Data", "No test results available. Make sure the server is connected and has test data.")
             return
         
         # Get filtered data (respecting current suite and executor filters)
