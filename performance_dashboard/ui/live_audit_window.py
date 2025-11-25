@@ -148,6 +148,9 @@ class LiveAuditWindow(QWidget):
         self.populate_table(data)
 
     def populate_table(self, data):
+        # Save the raw data for report generation
+        self.data = data
+        
         # Filter data if suite_filter or executor_filter is set
         filtered_data = data
         
