@@ -485,6 +485,8 @@ def submit_result(result: ResultCreate, current_user: User = Depends(get_current
     brd_reference = None
     deviation_percent = None
     auto_status = "Pending"
+    previous_value = None  # Initialize at function scope
+    deviation_from_previous = None  # Initialize at function scope
     
     # Use suite_name from the request (not extracted from test_case_id)
     suite = result.suite_name
