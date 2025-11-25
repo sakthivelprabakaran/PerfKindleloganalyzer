@@ -128,6 +128,8 @@ class TestResult(Base):
     deviation_percent = Column(Float, nullable=True)  # Auto-calculated deviation from BRD
     previous_value = Column(Float, nullable=True)  # Previous build value from BRD
     deviation_from_previous = Column(Float, nullable=True)  # Auto-calculated deviation from previous build
+    notes = Column(String, nullable=True, default="")  # Executor's notes for this test case
+    baseline = Column(String, nullable=True, default="")  # Baseline data if applicable
     timestamp = Column(DateTime, default=datetime.now)
     status = Column(String, default="Pending") # Pending, Approved, Retest
     auditor_comment = Column(String, default="")
@@ -181,10 +183,14 @@ class ResultCreate(BaseModel):
     project_name: str = "KindleLogAnalyzer"  # Default value
     suite_name: str  # Required (P0, P1, P2, etc.)
     value: float
+    notes: str = ""
+    baseline: str = ""
 
 class ResultUpdate(BaseModel):
     status: str
     auditor_comment: str
+    notes: Optional[str] = None
+    baseline: Optional[str] = None
 
 class ResultResponse(BaseModel):
     id: int
@@ -198,6 +204,8 @@ class ResultResponse(BaseModel):
     deviation_percent: Optional[float] = None
     previous_value: Optional[float] = None
     deviation_from_previous: Optional[float] = None
+    notes: str = ""
+    baseline: str = ""
     timestamp: datetime
     status: str
     auditor_comment: str
@@ -555,6 +563,8 @@ def submit_result(result: ResultCreate, current_user: User = Depends(get_current
         existing_result.deviation_percent = deviation_percent
         existing_result.previous_value = previous_value
         existing_result.deviation_from_previous = deviation_from_previous
+        existing_result.notes = result.notes
+        existing_result.baseline = result.baseline
         existing_result.timestamp = datetime.now()  # Update timestamp to latest submission
         existing_result.status = auto_status  # Reset status to Pending for re-review
         existing_result.auditor_comment = ""  # Clear previous auditor comment
@@ -574,6 +584,8 @@ def submit_result(result: ResultCreate, current_user: User = Depends(get_current
             deviation_percent=deviation_percent,
             previous_value=previous_value,
             deviation_from_previous=deviation_from_previous,
+            notes=result.notes,
+            baseline=result.baseline,
             status=auto_status
         )
         db.add(db_result)
