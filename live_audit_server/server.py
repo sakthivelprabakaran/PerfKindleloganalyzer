@@ -517,21 +517,45 @@ def submit_result(result: ResultCreate, current_user: User = Depends(get_current
             except Exception as e:
                 print(f"❌ Error reading BRD: {e}")
     
-    db_result = TestResult(
-        test_case_id=result.test_case_id,
-        test_case_name=result.test_case_name,
-        executor_name=result.executor_name,
-        project_name=result.project_name,  # Save project name
-        suite_name=result.suite_name,      # Save suite name
-        value=result.value,
-        brd_reference=brd_reference,
-        deviation_percent=deviation_percent,
-        status=auto_status
-    )
-    db.add(db_result)
+    # **Update-or-Create Logic**: Check if result already exists for this test case + executor + project + suite
+    existing_result = db.query(TestResult).filter(
+        TestResult.test_case_id == result.test_case_id,
+        TestResult.executor_name == result.executor_name,
+        TestResult.project_name == result.project_name,
+        TestResult.suite_name == result.suite_name
+    ).first()
+    
+    if existing_result:
+        # **UPDATE** existing record
+        print(f"♻️  Updating existing result ID {existing_result.id} for '{result.test_case_id}' by {result.executor_name}")
+        existing_result.test_case_name = result.test_case_name
+        existing_result.value = result.value
+        existing_result.brd_reference = brd_reference
+        existing_result.deviation_percent = deviation_percent
+        existing_result.timestamp = datetime.now()  # Update timestamp to latest submission
+        existing_result.status = auto_status  # Reset status to Pending for re-review
+        existing_result.auditor_comment = ""  # Clear previous auditor comment
+        existing_result.is_read_by_executor = 0  # Reset read flag
+        db_result = existing_result
+    else:
+        # **CREATE** new record
+        print(f"✨ Creating new result for '{result.test_case_id}' by {result.executor_name}")
+        db_result = TestResult(
+            test_case_id=result.test_case_id,
+            test_case_name=result.test_case_name,
+            executor_name=result.executor_name,
+            project_name=result.project_name,
+            suite_name=result.suite_name,
+            value=result.value,
+            brd_reference=brd_reference,
+            deviation_percent=deviation_percent,
+            status=auto_status
+        )
+        db.add(db_result)
+    
     db.commit()
     db.refresh(db_result)
-    print(f"🔍 DEBUG: Saved result ID {db_result.id} for executor '{result.executor_name}' - {result.test_case_id}")
+    print(f"✅ Saved result ID {db_result.id} for executor '{result.executor_name}' - {result.test_case_id}")
     
     # --- WebSocket Broadcast ---
     # Convert result to dict for JSON serialization
