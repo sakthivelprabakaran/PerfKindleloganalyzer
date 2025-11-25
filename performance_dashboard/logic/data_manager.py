@@ -33,6 +33,7 @@ class DataManager:
         self.session_info = session_info
         self.file_path = os.path.join(session_info['project_path'], session_info['file_name'])
         self.workbook = None # This will hold a dictionary of DataFrames (one for each sheet)
+        self.save_thread = None
         self.load_data()
 
     @staticmethod
