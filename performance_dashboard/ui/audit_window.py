@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QColor, QFont, QKeySequence
 from PyQt5.QtCore import Qt
 import pandas as pd
+import os
 from performance_dashboard.logic.audit_manager import AuditManager
 import io
 
@@ -17,10 +18,11 @@ class AuditWindow(QWidget):
     Window for the Audit and Report feature.
     Allows selecting Current and Reference files, generating comparison, and exporting reports.
     """
-    def __init__(self, return_callback, auth_token=None):
+    def __init__(self, return_callback=None, auth_token=None, user_context=None):
         super().__init__()
         self.return_callback = return_callback
         self.auth_token = auth_token
+        self.user_context = user_context if user_context else {}
         self.audit_manager = AuditManager()
         self.current_file_path = ""
         self.reference_file_path = ""
@@ -47,12 +49,13 @@ class AuditWindow(QWidget):
         title_label = QLabel("Audit & Report Generation")
         title_label.setFont(QFont("Arial", 16, QFont.Bold))
         title_label.setAlignment(Qt.AlignCenter)
-        
+        # Live Monitor button (top bar) - opens general monitor without filters
         live_btn = QPushButton("🔴 Live Monitor")
-        live_btn.clicked.connect(self.open_live_monitor)
-        live_btn.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold;")
+        live_btn.setStyleSheet("background-color: #dc3545; color: white; padding: 8px; font-weight: bold;")
+        live_btn.clicked.connect(lambda: self.open_general_live_monitor())
         
         header_layout.addWidget(back_btn)
+        header_layout.addWidget(live_btn)
         header_layout.addWidget(title_label)
         header_layout.addWidget(live_btn)
         layout.addLayout(header_layout)
@@ -292,14 +295,8 @@ class AuditWindow(QWidget):
         tab = QWidget()
         layout = QVBoxLayout(tab)
         
-        # Username and Server Input
+        # Server Input only (username from logged-in user)
         input_layout = QHBoxLayout()
-        input_layout.addWidget(QLabel("Your Username:"))
-        self.auditor_username_input = QLineEdit()
-        self.auditor_username_input.setPlaceholderText("Enter your username...")
-        self.auditor_username_input.setFixedWidth(200)
-        input_layout.addWidget(self.auditor_username_input)
-        
         input_layout.addWidget(QLabel("Server:"))
         self.auditor_server_input = QLineEdit(self.server_url)
         self.auditor_server_input.setFixedWidth(200)
@@ -510,11 +507,12 @@ class AuditWindow(QWidget):
 
     def fetch_my_assignments(self):
         """Fetches assigned audits for the current auditor from server."""
-        username = self.auditor_username_input.text().strip()
+        # Get username from user context (logged-in user)
+        username = self.user_context.get("username", "").strip()
         server_url = self.auditor_server_input.text().strip()
         
         if not username:
-            QMessageBox.warning(self, "Input Error", "Please enter your username.")
+            QMessageBox.warning(self, "Error", "Could not determine logged-in username. Please re-login.")
             return
         
         try:
@@ -596,7 +594,7 @@ class AuditWindow(QWidget):
         try:
             import requests
             server_url = self.auditor_server_input.text().strip()
-            auditor_username = self.auditor_username_input.text().strip()
+            auditor_username = self.user_context.get("username", "").strip()
             
             # Send file to server
             with open(file_path, 'rb') as f:
@@ -629,14 +627,33 @@ class AuditWindow(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Upload Error", f"Failed to upload BRD: {e}")
 
-    def open_live_monitor_for_assignment(self, assignment):
-        """Opens Live Monitor filtered for a specific assignment."""
-        suite_filter = assignment['suite']  # e.g., "P0", "P1", "P2"
-        self.live_window = LiveAuditWindow(suite_filter=suite_filter, auth_token=self.auth_token)
-        self.live_window.setWindowTitle(f"Live Monitor - {assignment['project']} {suite_filter}")
+    def open_general_live_monitor(self):
+        """Opens Live Monitor without any filters (shows all results)."""
+        self.live_window = LiveAuditWindow(
+            suite_filter=None,
+            executor_filter=None,
+            auth_token=self.auth_token,
+            user_context=self.user_context
+        )
+        self.live_window.setWindowTitle("Live Monitor - All Results")
         self.live_window.show()
 
-    def open_live_monitor(self):
-        if self.live_window is None:
-            self.live_window = LiveAuditWindow(auth_token=self.auth_token)
+    def open_live_monitor_for_assignment(self, assignment):
+        """Opens Live Monitor filtered for a specific assignment (suite + executor)."""
+        suite_filter = assignment['suite']  # e.g., "P0", "P1", "P2"
+        executor_filter = assignment.get('executor_username', '')  # Filter by specific executor
+        self.live_window = LiveAuditWindow(
+            suite_filter=suite_filter,
+            executor_filter=executor_filter,
+            auth_token=self.auth_token,
+            user_context=self.user_context
+        )
+        self.live_window.setWindowTitle(f"Live Monitor - {assignment['project']} {suite_filter} - {executor_filter}")
+        self.live_window.show()
+
+    def open_live_monitor(self, project, suite):
+        """Opens the live audit monitor for a specific assignment."""
+        # suite_filter=suite to only show matching test cases
+        self.live_window = LiveAuditWindow(suite_filter=suite, auth_token=self.auth_token, user_context=self.user_context)
+        self.live_window.setWindowTitle(f"Live Monitor - {project} {suite}")
         self.live_window.show()

@@ -121,6 +121,8 @@ class TestResult(Base):
     test_case_id = Column(String, index=True)
     test_case_name = Column(String)
     executor_name = Column(String)
+    project_name = Column(String, default="KindleLogAnalyzer")  # Project name
+    suite_name = Column(String, index=True)  # Suite name (P0, P1, P2, etc.) - indexed for filtering
     value = Column(Float)
     brd_reference = Column(Float, nullable=True)  # Reference value from BRD
     deviation_percent = Column(Float, nullable=True)  # Auto-calculated deviation
@@ -174,6 +176,8 @@ class ResultCreate(BaseModel):
     test_case_id: str
     test_case_name: str
     executor_name: str
+    project_name: str = "KindleLogAnalyzer"  # Default value
+    suite_name: str  # Required (P0, P1, P2, etc.)
     value: float
 
 class ResultUpdate(BaseModel):
@@ -185,6 +189,8 @@ class ResultResponse(BaseModel):
     test_case_id: str
     test_case_name: str
     executor_name: str
+    project_name: str
+    suite_name: str
     value: float
     brd_reference: Optional[float] = None
     deviation_percent: Optional[float] = None
@@ -476,13 +482,14 @@ def submit_result(result: ResultCreate, current_user: User = Depends(get_current
     deviation_percent = None
     auto_status = "Pending"
     
-    # Extract suite from test_case_id (e.g., "P03" → "P0")
-    suite = result.test_case_id[:2] if len(result.test_case_id) >= 2 else None
+    # Use suite_name from the request (not extracted from test_case_id)
+    suite = result.suite_name
     
     if suite:
-        # Find BRD for this suite (latest uploaded)
+        # Find BRD for this suite and project (latest uploaded)
         brd_record = db.query(AuditorBRD).filter(
-            AuditorBRD.suite == suite
+            AuditorBRD.suite == suite,
+            AuditorBRD.project == result.project_name
         ).order_by(AuditorBRD.uploaded_at.desc()).first()
         
         if brd_record and os.path.exists(brd_record.brd_file_path):
@@ -514,6 +521,8 @@ def submit_result(result: ResultCreate, current_user: User = Depends(get_current
         test_case_id=result.test_case_id,
         test_case_name=result.test_case_name,
         executor_name=result.executor_name,
+        project_name=result.project_name,  # Save project name
+        suite_name=result.suite_name,      # Save suite name
         value=result.value,
         brd_reference=brd_reference,
         deviation_percent=deviation_percent,
@@ -522,6 +531,7 @@ def submit_result(result: ResultCreate, current_user: User = Depends(get_current
     db.add(db_result)
     db.commit()
     db.refresh(db_result)
+    print(f"🔍 DEBUG: Saved result ID {db_result.id} for executor '{result.executor_name}' - {result.test_case_id}")
     
     # --- WebSocket Broadcast ---
     # Convert result to dict for JSON serialization
@@ -545,7 +555,11 @@ def submit_result(result: ResultCreate, current_user: User = Depends(get_current
 def get_dashboard(db: Session = Depends(get_db)):
     """Auditor fetches all results for the dashboard."""
     # Return latest 100 results for now
-    return db.query(TestResult).order_by(TestResult.timestamp.desc()).limit(100).all()
+    results = db.query(TestResult).order_by(TestResult.timestamp.desc()).limit(100).all()
+    print(f"🔍 DEBUG: /live_dashboard returning {len(results)} results")
+    if len(results) > 0:
+        print(f"🔍 DEBUG: Sample executors: {set([r.executor_name for r in results[:10]])}")
+    return results
 
 @app.post("/update_status/{result_id}", response_model=ResultResponse)
 def update_status(result_id: int, update: ResultUpdate, db: Session = Depends(get_db)):
@@ -788,7 +802,8 @@ async def upload_brd(
         role: str = payload.get("role")
         print(f"DEBUG: Token decoded. Username: {username}, Role: {role}")
         
-        if role != "auditor" and role != "admin":
+        # Check if user has auditor or admin role (handles comma-separated roles)
+        if "auditor" not in role and "admin" not in role:
              raise HTTPException(status_code=403, detail="Not authorized")
     except Exception as e:
         print(f"DEBUG: Token validation failed: {e}")

@@ -101,10 +101,19 @@ class LoginWindow(QWidget):
         # Username field
         username_label = QLabel("Username:")
         username_label.setFont(QFont("Arial", 11, QFont.Bold))
+        username_label.setStyleSheet("color: #2c3e50;")  # Dark color for visibility
         frame_layout.addWidget(username_label)
         
         self.username_input = QLineEdit()
         self.username_input.setPlaceholderText("Enter your username")
+        self.username_input.setStyleSheet("""
+            QLineEdit {
+                color: #2c3e50;
+            }
+            QLineEdit::placeholder {
+                color: #7f8c8d;
+            }
+        """)
         self.username_input.returnPressed.connect(self.focus_password)  # Enter moves to password
         frame_layout.addWidget(self.username_input)
         
@@ -113,11 +122,20 @@ class LoginWindow(QWidget):
         # Password field
         password_label = QLabel("Password:")
         password_label.setFont(QFont("Arial", 11, QFont.Bold))
+        password_label.setStyleSheet("color: #2c3e50;")  # Dark color for visibility
         frame_layout.addWidget(password_label)
         
         self.password_input = QLineEdit()
         self.password_input.setPlaceholderText("Enter your password")
         self.password_input.setEchoMode(QLineEdit.Password)  # Mask password
+        self.password_input.setStyleSheet("""
+            QLineEdit {
+                color: #2c3e50;
+            }
+            QLineEdit::placeholder {
+                color: #7f8c8d;
+            }
+        """)
         self.password_input.returnPressed.connect(self.login)  # Enter triggers login
         frame_layout.addWidget(self.password_input)
         

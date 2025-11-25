@@ -8,10 +8,10 @@ import os
 
 class MainWindow(QWidget):
     """A container widget for the Performance Dashboard application."""
-    def __init__(self, back_to_launcher_callback=None, auth_token=None):
+    def __init__(self, back_to_launcher_callback=None, user_context=None):
         super().__init__()
         self.back_to_launcher_callback = back_to_launcher_callback
-        self.user_context = {"token": auth_token} if auth_token else None
+        self.user_context = user_context if user_context else {}
         self.state_manager = StateManager()
         self.data_manager = None  # Instantiated when a session starts
         self.save_thread = None
@@ -28,7 +28,8 @@ class MainWindow(QWidget):
             self.state_manager,
             self.switch_to_dashboard,
             self.switch_to_audit,
-            self.back_to_launcher_callback
+            self.back_to_launcher_callback,
+            self.user_context
         )
         self.execution_dashboard = None  # Created when needed
         self.audit_window = None # Created when needed

@@ -26,16 +26,19 @@ class CommentDialog(QDialog):
         return self.comment_input.text()
 
 class LiveAuditWindow(QWidget):
-    def __init__(self, suite_filter=None, auth_token=None):
+    def __init__(self, suite_filter=None, executor_filter=None, auth_token=None, user_context=None):
         super().__init__()
         self.setWindowTitle("Live Audit Monitor")
         self.resize(1000, 600)
         
         self.suite_filter = suite_filter  # e.g., "P0", "P1", etc.
+        self.executor_filter = executor_filter  # Filter by specific executor username
         self.auth_token = auth_token
+        self.user_context = user_context if user_context else {}
         
         # Network Manager - created lazily when needed
         self.network_manager = None
+        self.data = []
         
         self.init_ui()
         
@@ -92,10 +95,15 @@ class LiveAuditWindow(QWidget):
         """Lazily initialize NetworkManager when needed."""
         if self.network_manager is None:
             from performance_dashboard.logic.network_manager import NetworkManager
-            self.network_manager = NetworkManager(token=self.auth_token)
+            # Pass username for WebSocket authentication
+            username = self.user_context.get("username", "auditor")
+            self.network_manager = NetworkManager(executor_name=username, token=self.auth_token)
             # Connect dashboard_update signal for real-time updates
             if hasattr(self.network_manager, 'dashboard_update'):
                 self.network_manager.dashboard_update.connect(self.on_new_result)
+            
+            # Start connection explicitly
+            self.network_manager.connect()
 
     def on_new_result(self, result_data):
         """Handle real-time result updates via WebSocket."""
@@ -116,12 +124,30 @@ class LiveAuditWindow(QWidget):
         self.populate_table(data)
 
     def populate_table(self, data):
-        # Filter data if suite_filter is set
+        # Filter data if suite_filter or executor_filter is set
+        filtered_data = data
+        
         if self.suite_filter:
-            # Filter by test case ID prefix (e.g., "P0" filters "P03", "P01", etc.)
-            filtered_data = [row for row in data if row['test_case_id'].startswith(self.suite_filter)]
-        else:
-            filtered_data = data
+            # Filter by suite_name field (not test_case_id prefix!)
+            print(f"🔍 DEBUG: Filtering by suite: '{self.suite_filter}'")
+            print(f"🔍 DEBUG: Before suite filter: {len(filtered_data)} results")
+            # Show sample suite_name values for debugging
+            if len(filtered_data) > 0:
+                sample_suites = set([row.get('suite_name', 'MISSING') for row in filtered_data[:5]])
+                print(f"🔍 DEBUG: Sample suite_name values in data: {sample_suites}")
+            filtered_data = [row for row in filtered_data if row.get('suite_name', '') == self.suite_filter]
+            print(f"🔍 DEBUG: After suite filter: {len(filtered_data)} results")
+            if len(filtered_data) > 0:
+                print(f"🔍 DEBUG: Sample suite_name: '{filtered_data[0].get('suite_name', 'N/A')}'")
+        
+        if self.executor_filter:
+            # Filter by executor username
+            print(f"🔍 DEBUG: Filtering by executor: '{self.executor_filter}'")
+            print(f"🔍 DEBUG: Before executor filter: {len(filtered_data)} results")
+            filtered_data = [row for row in filtered_data if row.get('executor_name', '') == self.executor_filter]
+            print(f"🔍 DEBUG: After executor filter: {len(filtered_data)} results")
+            if len(filtered_data) > 0:
+                print(f"🔍 DEBUG: Sample executor_name: '{filtered_data[0].get('executor_name', 'N/A')}'")
         
         self.table.setRowCount(len(filtered_data))
         for i, row in enumerate(filtered_data):

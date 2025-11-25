@@ -60,9 +60,15 @@ class ApplicationContainer(QMainWindow):
         )
         # Pass token to FinalKindleLogAnalyzer
         self.log_analyzer = FinalKindleLogAnalyzer(back_to_launcher_callback=self.back_to_launcher, auth_token=auth_token)
-        # Pass token to PerformanceDashboard
-        self.exec_dashboard = PerformanceDashboard(back_to_launcher_callback=self.back_to_launcher, auth_token=auth_token)
-        self.audit_window = AuditWindow(return_callback=self.back_to_launcher, auth_token=auth_token)
+        # Pass user context (including username, role, token) to PerformanceDashboard
+        user_context = {
+            "username": self.current_user,
+            "role": self.user_role,
+            "full_name": self.user_full_name,
+            "auth_token": self.auth_token
+        }
+        self.exec_dashboard = PerformanceDashboard(back_to_launcher_callback=self.back_to_launcher, user_context=user_context)
+        self.audit_window = AuditWindow(return_callback=self.back_to_launcher, auth_token=self.auth_token, user_context=user_context)
         self.task_assignment_window = TaskAssignmentWindow(
             return_callback=self.back_to_launcher,
             auth_token=self.auth_token

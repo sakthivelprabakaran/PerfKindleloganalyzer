@@ -12,12 +12,13 @@ class LauncherScreen(QWidget):
     The initial screen for the Performance Execution Dashboard.
     Provides options to create a new session or open a saved one.
     """
-    def __init__(self, state_manager, switch_to_dashboard_callback, open_audit_callback, back_to_launcher_callback=None):
+    def __init__(self, state_manager, switch_to_dashboard_callback, open_audit_callback, back_to_launcher_callback=None, user_context=None):
         super().__init__()
         self.state = state_manager
         self.switch_to_dashboard = switch_to_dashboard_callback
         self.open_audit_callback = open_audit_callback
         self.back_to_launcher_callback = back_to_launcher_callback
+        self.user_context = user_context if user_context else {}
         self.init_ui()
         self.load_priorities()
         self.load_session_table()
@@ -56,12 +57,11 @@ class LauncherScreen(QWidget):
         layout = QVBoxLayout()
         panel.setLayout(layout)
 
-        # Username Input (NEW)
-        layout.addWidget(QLabel("Your Username:"))
-        self.username_input = QLineEdit()
-        self.username_input.setPlaceholderText("Enter your username...")
-        self.username_input.textChanged.connect(self.on_username_changed)
-        layout.addWidget(self.username_input)
+        # Task Assignment Section (for Executors)
+        header_layout = QHBoxLayout()
+        header_layout.addWidget(QLabel("📋 My Assigned Tasks:"))
+        header_layout.addStretch()
+        layout.addLayout(header_layout)
 
         # Server URL Input (NEW)
         server_layout = QHBoxLayout()
@@ -207,18 +207,25 @@ class LauncherScreen(QWidget):
             self.project_path_input.setText(path)
 
     def load_session_table(self):
-        """Populates the session table with data from the state manager."""
+        """Populates the session table with data from the state manager, filtered by logged-in user."""
         self.state.load_sessions()
         self.session_table.setRowCount(0) # Clear the table first
+        
+        # Get logged-in username
+        current_username = self.user_context.get("username", "")
+        
         for session in self.state.sessions:
-            row_position = self.session_table.rowCount()
-            self.session_table.insertRow(row_position)
-            self.session_table.setItem(row_position, 0, QTableWidgetItem(session.get("device_name", "")))
-            self.session_table.setItem(row_position, 1, QTableWidgetItem(str(session.get("week", ""))))
-            self.session_table.setItem(row_position, 2, QTableWidgetItem(session.get("build_details", "")))
-            self.session_table.setItem(row_position, 3, QTableWidgetItem(session.get("priority", "")))
-            self.session_table.setItem(row_position, 4, QTableWidgetItem(session.get("file_name", "")))
-            self.session_table.setItem(row_position, 5, QTableWidgetItem(session.get("status", "")))
+            # Filter sessions by username (check if session belongs to current user)
+            session_owner = session.get("username", "")  # Assuming sessions have a username field
+            if session_owner == current_username or not current_username:  # Show all if no username (for backward compatibility)
+                row_position = self.session_table.rowCount()
+                self.session_table.insertRow(row_position)
+                self.session_table.setItem(row_position, 0, QTableWidgetItem(session.get("device_name", "")))
+                self.session_table.setItem(row_position, 1, QTableWidgetItem(str(session.get("week", ""))))
+                self.session_table.setItem(row_position, 2, QTableWidgetItem(session.get("build_details", "")))
+                self.session_table.setItem(row_position, 3, QTableWidgetItem(session.get("priority", "")))
+                self.session_table.setItem(row_position, 4, QTableWidgetItem(session.get("file_name", "")))
+                self.session_table.setItem(row_position, 5, QTableWidgetItem(session.get("status", "")))
         self.session_table.resizeColumnsToContents()
 
     def start_new_session(self):
@@ -233,19 +240,20 @@ class LauncherScreen(QWidget):
             QMessageBox.warning(self, "Input Error", "All fields must be filled out to start a new session.")
             return
 
-        # Create the session in the state manager
+        # Create the session in the state manager with logged-in username
+        username = self.user_context.get("username", "")
         session_data = self.state.create_new_session(
-            project_path, device_name, week, build_details, priority
+            project_path, device_name, week, build_details, priority, username
         )
 
         # Add task assignment data if a task was selected
         if self.current_task_data:
-            session_data['task_assignment'] = self.current_task_data
-            session_data['username'] = self.username_input.text().strip()
-            session_data['server_url'] = self.server_url_input.text().strip()
-
-        # The data manager will be instantiated in the main window
-        # For now, we just switch views
+            session_data['task_assignment_id'] = self.current_task_data.get('id')
+            session_data['project'] = self.current_task_data.get('project')
+            session_data['suite'] = self.current_task_data.get('suite')
+            session_data['auditor'] = self.current_task_data.get('auditor_username')
+        
+        # Switch to the dashboard with the new session
         self.switch_to_dashboard(session_data)
 
     def filter_sessions(self):
@@ -326,17 +334,13 @@ class LauncherScreen(QWidget):
             # Add default priorities as a fallback
             self.priority_combo.addItems(["P0", "P1", "P2"])
 
-    def on_username_changed(self):
-        """Called when username changes - auto-fetch tasks"""
-        if len(self.username_input.text()) >= 3:  # Minimum 3 characters
-            self.fetch_assigned_tasks()
-
     def fetch_assigned_tasks(self):
         """Fetches assigned tasks for the current username from server"""
-        username = self.username_input.text().strip()
+        username = self.user_context.get("username", "").strip()
         server_url = self.server_url_input.text().strip()
         
         if not username:
+            # No username available (shouldn't happen with login system)
             return
         
         try:

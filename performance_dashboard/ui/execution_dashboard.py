@@ -1,5 +1,6 @@
 import time
 import pandas as pd
+import threading
 
 # Note: All necessary PyQt5 widgets are imported below.
 # The code review may have been based on an older version of this file.
@@ -98,6 +99,14 @@ class ExecutionDashboard(QWidget):
         self.current_filtered_index = 0 # To track position within the filtered list
 
         self.init_ui()
+        
+        # Update UI based on the current session
+        self.load_test_case_data()
+        
+        # Initialize Live Mode since checkbox is checked by default
+        # This must be done AFTER init_ui so submit_all_btn exists
+        self.live_chk.setChecked(True) 
+        # self.toggle_live_mode(2) # Triggered automatically by setChecked
 
     def init_ui(self):
         """Initializes the UI layout and widgets."""
@@ -153,6 +162,7 @@ class ExecutionDashboard(QWidget):
         # Live Mode Toggle
         live_layout = QHBoxLayout()
         self.live_chk = QCheckBox("Live Audit Mode")
+        # self.live_chk.setChecked(True)  # MOVED: Set in __init__ after UI is fully built
         self.live_chk.stateChanged.connect(self.toggle_live_mode)
         self.server_ip_input = QLineEdit("http://localhost:8000")
         self.server_ip_input.setPlaceholderText("Server URL")
@@ -213,6 +223,8 @@ class ExecutionDashboard(QWidget):
         timer_layout.addWidget(self.timer_display)
         timer_layout.addWidget(self.start_stop_btn)
         layout.addWidget(timer_group)
+        
+
         
         # Baseline Activity
         self.baseline_group = QGroupBox("🎯 Baseline Activity")
@@ -547,6 +559,13 @@ class ExecutionDashboard(QWidget):
         else:
             self.iteration_label.setText(f"Iteration: {self.current_iteration}/5")
             self.baseline_group.setVisible(False)
+            self.iteration_label.setText(f"Iteration: {self.current_iteration}/5")
+            self.baseline_group.setVisible(False)
+
+    def load_test_case_data(self):
+        """Loads the test case data for the current index."""
+        current_index = self.state.get_current_test_case_index()
+        self.load_test_case_by_index(current_index)
 
     def navigate_next(self):
         current_index = self.state.get_current_test_case_index()
@@ -681,8 +700,9 @@ class ExecutionDashboard(QWidget):
                 
                 if iteration_values:
                     average_value = sum(iteration_values) / len(iteration_values)
+                    suite_name = self.state.get_active_sheet()  # Get the current suite (P0, P1, P2, etc.)
                     try:
-                        self.network_manager.submit_result(tc_id, tc_name, f"{average_value:.3f}")
+                        self.network_manager.submit_result(tc_id, tc_name, f"{average_value:.3f}", suite_name=suite_name)
                     except Exception as e:
                         print(f"Error submitting result: {e}")
             
@@ -918,6 +938,9 @@ class ExecutionDashboard(QWidget):
                 )
                 self.network_manager.notification_received.connect(self.show_audit_notification)
                 self.network_manager.connection_status.connect(self.update_connection_status)
+                
+                # Start connection explicitly after signals are connected
+                self.network_manager.connect()
             
             # WebSocket connects automatically, no need to start polling
             url = self.server_ip_input.text().strip()
@@ -945,6 +968,26 @@ class ExecutionDashboard(QWidget):
             self.connection_indicator.setText(text)
             self.connection_indicator.setStyleSheet(style)
             self.status_bar.showMessage(message)
+            
+            # If connected, fetch missed notifications
+            if state == "connected":
+                self.check_missed_notifications()
+
+    def check_missed_notifications(self):
+        """Fetches and displays any notifications missed while disconnected."""
+        if self.network_manager:
+            notifications = self.network_manager.fetch_notifications()
+            for notif in notifications:
+                # Convert server response to notification format
+                data = {
+                    "id": notif.get("id"),
+                    "title": "Audit Alert (Missed)",
+                    "message": f"Test Case '{notif.get('test_case_name')}' was REJECTED.\nComment: {notif.get('auditor_comment')}",
+                    "timestamp": notif.get("timestamp"),
+                    "status": notif.get("status"),
+                    "details": notif
+                }
+                self.show_audit_notification(data)
     
     def submit_all_completed(self):
         """Submits all completed test cases (those with calculated averages) to auditor."""
@@ -974,7 +1017,8 @@ class ExecutionDashboard(QWidget):
                 try:
                     avg_float = float(average)
                     if avg_float > 0:  # Valid average
-                        self.network_manager.submit_result(tc_id, tc_name, f"{avg_float:.3f}")
+                        suite_name = self.state.get_active_sheet()  # Get current suite
+                        self.network_manager.submit_result(tc_id, tc_name, f"{avg_float:.3f}", suite_name=suite_name)
                         submitted_count += 1
                 except Exception as e:
                     print(f"Failed to submit {tc_name}: {e}")
@@ -1017,6 +1061,11 @@ class ExecutionDashboard(QWidget):
         
         # 4. Highlight tab header to indicate new notification
         self.tabs.tabBar().setTabTextColor(2, QColor("red"))
+        
+        # 5. Mark as read on server (if it has an ID)
+        if "id" in data and self.network_manager:
+            # Run in background to avoid blocking UI
+            threading.Thread(target=self.network_manager.mark_read, args=(data["id"],), daemon=True).start()
 
     def on_tab_changed(self, index):
         """Reset tab color when user views notifications."""

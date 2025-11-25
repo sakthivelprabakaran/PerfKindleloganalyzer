@@ -23,11 +23,11 @@ class NetworkManager(QObject):
     STATE_CONNECTED = "connected"
     STATE_FAILED = "failed"
 
-    def __init__(self, executor_name=None, token=None):
+    def __init__(self, executor_name, token=None):
         super().__init__()
-        self.server_url = SERVER_URL
         self.executor_name = executor_name
         self.token = token
+        self.server_url = "http://localhost:8000"
         self.headers = {"Authorization": f"Bearer {token}"} if token else {}
         self.timeout = REQUEST_TIMEOUT
         
@@ -57,8 +57,14 @@ class NetworkManager(QObject):
         self._schedule_reconnect_signal.connect(self._start_reconnect_timer)
         
         # Start connection in a separate thread to avoid blocking UI
-        self.connect_thread = threading.Thread(target=self.connect_socket, daemon=True)
-        self.connect_thread.start()
+        # self.connect_thread = threading.Thread(target=self.connect_socket, daemon=True)
+        # self.connect_thread.start()
+
+    def connect(self):
+        """Explicitly start the connection process."""
+        if not hasattr(self, 'connect_thread') or not self.connect_thread.is_alive():
+            self.connect_thread = threading.Thread(target=self.connect_socket, daemon=True)
+            self.connect_thread.start()
 
     def log(self, message):
         """Log message with timestamp."""
@@ -185,33 +191,76 @@ class NetworkManager(QObject):
         """Disconnects the socket (legacy name kept for compatibility)."""
         self.log("Disconnecting...")
         self.reconnect_timer.stop()  # Stop any pending reconnection
+        
+        # Set state to DISCONNECTED to prevent on_disconnect from triggering reconnect
+        self.connection_state = self.STATE_DISCONNECTED
+        
         if self.sio.connected:
             try:
                 self.sio.disconnect()
             except Exception as e:
                 self.log(f"Error during disconnect: {e}")
 
-    def submit_result(self, test_case_id, test_case_name, value):
-        """Submits a test result to the server (via REST for reliability)."""
+    def submit_result(self, test_case_id, test_case_name, value, suite_name="Performance", project_name="KindleLogAnalyzer"):
+        """Submits a test result to the server."""
         try:
-            payload = {
-                "test_case_id": str(test_case_id),
-                "test_case_name": str(test_case_name),
+            # Ensure value is a float string
+            value_float = float(value)
+            
+            data = {
+                "test_case_id": test_case_id,
+                "test_case_name": test_case_name,
+                "value": value_float,
                 "executor_name": self.executor_name,
-                "value": float(value)  # Convert string to float
+                "project_name": project_name,
+                "suite_name": suite_name
             }
-            # Send via REST
+            
+            self.log(f"Submitting result: {test_case_name} = {value_float} (suite: {suite_name})")
             response = requests.post(
                 f"{self.server_url}/submit_result", 
-                json=payload, 
-                headers=self.headers, 
+                json=data,
+                headers=self.headers,
                 timeout=self.timeout
             )
-            response.raise_for_status()
-            self.log(f"✅ Submitted result: {test_case_id}")
+            
+            if response.status_code == 200:
+                self.log(f"✅ Submitted result: {test_case_id}")
+                return True
+            else:
+                self.log(f"❌ Submission failed: {response.status_code} - {response.text}")
+                return False
+                
         except Exception as e:
-            self.log(f"❌ Failed to submit result: {e}")
-            raise
+            self.log(f"❌ Error submitting result: {e}")
+            return False
+
+    def fetch_notifications(self):
+        """Fetches missed notifications (Rejected/Unread) from server."""
+        try:
+            url = f"{self.server_url}/notifications/{self.executor_name}"
+            response = requests.get(url, headers=self.headers, timeout=self.timeout)
+            
+            if response.status_code == 200:
+                notifications = response.json()
+                self.log(f"Fetched {len(notifications)} missed notifications")
+                return notifications
+            else:
+                self.log(f"Failed to fetch notifications: {response.status_code}")
+                return []
+        except Exception as e:
+            self.log(f"Error fetching notifications: {e}")
+            return []
+
+    def mark_read(self, result_id):
+        """Marks a notification as read."""
+        try:
+            url = f"{self.server_url}/mark_read/{result_id}"
+            response = requests.post(url, headers=self.headers, timeout=self.timeout)
+            response.raise_for_status() # Raise an exception for bad status codes
+            self.log(f"✅ Marked notification {result_id} as read")
+        except Exception as e:
+            self.log(f"❌ Error marking result {result_id} as read: {e}")
 
     def fetch_dashboard_data(self):
         """Fetches initial dashboard data via REST."""

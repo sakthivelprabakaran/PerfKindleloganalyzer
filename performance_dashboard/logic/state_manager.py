@@ -38,7 +38,7 @@ class StateManager:
         except IOError as e:
             print(f"Error saving sessions: {e}")
 
-    def create_new_session(self, project_path, device_name, week, build_details, priority):
+    def create_new_session(self, project_path, device_name, week, build_details, priority, username=""):
         """Creates a new session and adds it to the list."""
         session_file_name = f"{priority}_{device_name}_Week_{week}.xlsx"
         new_session = {
@@ -51,6 +51,7 @@ class StateManager:
             "file_name": session_file_name,
             "status": "In Progress",
             "current_test_case_index": 0,
+            "username": username,  # Store username for filtering
         }
         self.sessions.append(new_session)
         self.current_session = new_session
