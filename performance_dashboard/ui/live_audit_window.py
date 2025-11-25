@@ -66,6 +66,15 @@ class LiveAuditWindow(QWidget):
         header_layout.addWidget(connect_btn)
         layout.addLayout(header_layout)
         
+        # Search Bar
+        search_layout = QHBoxLayout()
+        search_layout.addWidget(QLabel("🔍 Search:"))
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search by Test Case ID, Name, Executor, or Status...")
+        self.search_input.textChanged.connect(self.filter_table)
+        search_layout.addWidget(self.search_input)
+        layout.addLayout(search_layout)
+        
         # Table
         self.table = QTableWidget()
         self.table.setColumnCount(8)
@@ -257,3 +266,32 @@ class LiveAuditWindow(QWidget):
             row_data = self.table_data[selected_row]
             self.network_manager.update_status(row_data['id'], "Rejected", comment)
             self.refresh_data()
+    
+    def filter_table(self):
+        """Filters table rows based on search input."""
+        search_text = self.search_input.text().lower()
+        
+        # Show all rows if search is empty
+        if not search_text:
+            for row in range(self.table.rowCount()):
+                self.table.setRowHidden(row, False)
+            return
+        
+        # Hide rows that don't match search
+        for row in range(self.table.rowCount()):
+            # Check Test Case ID (column 0)
+            test_case_id = self.table.item(row, 0).text().lower() if self.table.item(row, 0) else ""
+            # Check Test Case Name (column 1)
+            test_case_name = self.table.item(row, 1).text().lower() if self.table.item(row, 1) else ""
+            # Check Executor (column 2)
+            executor = self.table.item(row, 2).text().lower() if self.table.item(row, 2) else ""
+            # Check Status (column 6)
+            status = self.table.item(row, 6).text().lower() if self.table.item(row, 6) else ""
+            
+            # Show row if search text matches any column
+            matches = (search_text in test_case_id or 
+                      search_text in test_case_name or 
+                      search_text in executor or 
+                      search_text in status)
+            
+            self.table.setRowHidden(row, not matches)
