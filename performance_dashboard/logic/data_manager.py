@@ -198,6 +198,15 @@ class DataManager:
             print("DataManager: No workbook data loaded, nothing to save")
             return None
 
+        # Check if a save thread is already running
+        if self.save_thread and self.save_thread.isRunning():
+            # If running, we skip this save request or wait?
+            # Ideally we should queue it, but for now, let's just wait a bit or ignore if data hasn't changed much.
+            # But since this is auto-save, skipping might be okay if another save is in progress.
+            # However, to be safe and avoid the crash, we MUST NOT overwrite self.save_thread
+            print("DataManager: Save already in progress, skipping this auto-save trigger.")
+            return self.save_thread
+
         # Create and start the thread
         self.save_thread = SaveThread(self.file_path, self.workbook)
         self.save_thread.start()

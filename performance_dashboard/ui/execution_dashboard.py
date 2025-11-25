@@ -574,13 +574,13 @@ class ExecutionDashboard(QWidget):
     def navigate_next(self):
         current_index = self.state.get_current_test_case_index()
         if current_index + 1 < self.total_test_cases:
-            self.save_notes() # Auto-save before navigating
+            # self.save_notes() is called inside load_test_case_by_index
             self.load_test_case_by_index(current_index + 1)
 
     def navigate_previous(self):
         current_index = self.state.get_current_test_case_index()
         if current_index > 0:
-            self.save_notes() # Auto-save before navigating
+            # self.save_notes() is called inside load_test_case_by_index
             self.load_test_case_by_index(current_index - 1)
 
     def format_and_display_time(self, elapsed):
