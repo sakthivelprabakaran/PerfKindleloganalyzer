@@ -99,6 +99,21 @@ class LiveAuditWindow(QWidget):
         legend_layout.addWidget(lbl_rejected)
         legend_layout.addStretch()
         layout.addLayout(legend_layout)
+        
+        # Report Section
+        report_layout = QHBoxLayout()
+        report_btn = QPushButton("📊 Generate Report")
+        report_btn.clicked.connect(self.generate_report)
+        report_layout.addWidget(report_btn)
+        
+        # Stats Display (hidden by default)
+        self.stats_label = QLabel("")
+        self.stats_label.setStyleSheet("font-weight: bold; padding: 10px; background-color: #f0f0f0; border-radius: 5px;")
+        self.stats_label.setVisible(False)
+        report_layout.addWidget(self.stats_label)
+        
+        report_layout.addStretch()
+        layout.addLayout(report_layout)
     
     def ensure_network_manager(self):
         """Lazily initialize NetworkManager when needed."""
@@ -295,3 +310,126 @@ class LiveAuditWindow(QWidget):
                       search_text in status)
             
             self.table.setRowHidden(row, not matches)
+    
+    def generate_report(self):
+        """Generate audit report from current Live Monitor data."""
+        if not self.data:
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "No Data", "No test results available to generate report.")
+            return
+        
+        # Get filtered data (respecting current suite and executor filters)
+        filtered_data = self.data
+        
+        if self.suite_filter:
+            filtered_data = [row for row in filtered_data if row.get('suite_name', '') == self.suite_filter]
+        
+        if self.executor_filter:
+            filtered_data = [row for row in filtered_data if row.get('executor_name', '') == self.executor_filter]
+        
+        if not filtered_data:
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "No Data", "No test results match the current filters.")
+            return
+        
+        # Initialize stats
+        stats = {
+            'Green': 0,      # Current < Reference (improved performance)
+            'Yellow': 0,     # 0% <= deviation <= 10% (acceptable)
+            'Red': 0,        # deviation > 10% (needs attention)
+            'Blocked_NA': 0, # No reference or blocked
+            'Total': 0
+        }
+        
+        # Analyze each result using the same logic as manual audit
+        for row in filtered_data:
+            curr_val = row.get('value', 0)
+            ref_val = row.get('brd_reference')
+            status = row.get('status', 'Pending')
+            
+            # Check if Blocked/NA
+            if ref_val is None or ref_val == 'N/A':
+                stats['Blocked_NA'] += 1
+            else:
+                try:
+                    curr = float(curr_val)
+                    ref = float(ref_val)
+                    
+                    if ref == 0:
+                        deviation = 0.0
+                    else:
+                        deviation = ((curr - ref) / ref) * 100
+                    
+                    # Categorize based on deviation
+                    if deviation < 0:
+                        stats['Green'] += 1  # Performance improved
+                    elif 0 <= deviation <= 10:
+                        stats['Yellow'] += 1  # Within acceptable range
+                    else:
+                        stats['Red'] += 1  # Needs attention
+                        
+                except (ValueError, TypeError):
+                    stats['Blocked_NA'] += 1
+            
+            stats['Total'] += 1
+        
+        # Display stats
+        stats_text = (
+            f"📊 <b>Report Summary:</b> "
+            f"<span style='color: green;'>✅ Green: {stats['Green']}</span> | "
+            f"<span style='color: #d4a00c;'>⚠️  Yellow: {stats['Yellow']}</span> | "
+            f"<span style='color: red;'>❌ Red: {stats['Red']}</span> | "
+            f"<span style='color: gray;'>🚫 Blocked/NA: {stats['Blocked_NA']}</span> | "
+            f"<b>Total: {stats['Total']}</b>"
+        )
+        self.stats_label.setText(stats_text)
+        self.stats_label.setVisible(True)
+        
+        # Optional: Apply color coding to table rows based on categories
+        self.apply_color_coding()
+    
+    def apply_color_coding(self):
+        """Apply color coding to table rows based on deviation categories."""
+        for row in range(self.table.rowCount()):
+            if self.table.isRowHidden(row):
+                continue
+            
+            # Get values from table
+            brd_ref_item = self.table.item(row, 4)  # BRD Ref column
+            value_item = self.table.item(row, 3)     # Value column
+            
+            if not brd_ref_item or not value_item:
+                continue
+            
+            brd_ref_text = brd_ref_item.text()
+            value_text = value_item.text()
+            
+            # Determine color based on deviation
+            color = None
+            if brd_ref_text == 'N/A':
+                color = QColor("#e2e3e5")  # Gray for Blocked/NA
+            else:
+                try:
+                    curr = float(value_text)
+                    ref = float(brd_ref_text)
+                    
+                    if ref == 0:
+                        deviation = 0.0
+                    else:
+                        deviation = ((curr - ref) / ref) * 100
+                    
+                    if deviation < 0:
+                        color = QColor("#d4edda")  # Green
+                    elif 0 <= deviation <= 10:
+                        color = QColor("#fff3cd")  # Yellow
+                    else:
+                        color = QColor("#f8d7da")  # Red
+                except (ValueError, TypeError):
+                    color = QColor("#e2e3e5")  # Gray for errors
+            
+            # Apply color to entire row
+            if color:
+                for col in range(self.table.columnCount()):
+                    item = self.table.item(row, col)
+                    if item:
+                        item.setBackground(color)
