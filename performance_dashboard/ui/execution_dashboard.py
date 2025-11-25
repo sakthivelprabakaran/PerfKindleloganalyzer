@@ -651,7 +651,7 @@ class ExecutionDashboard(QWidget):
                 tc_data = self.data_manager.get_test_case(active_sheet, current_index)
                 
                 normal_iterations_count = 0
-                if tc_data:
+                if tc_data is not None and not tc_data.empty:
                     for i in range(1, 6):
                         val = tc_data.get(f"Iteration{i}", "")
                         if pd.notna(val) and str(val).strip() != "":
