@@ -6,6 +6,8 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
+from performance_dashboard.logic.network_manager import NetworkManager
+from config import SERVER_URL
 
 class LauncherScreen(QWidget):
     """
@@ -196,6 +198,7 @@ class LauncherScreen(QWidget):
 
         buttons_layout.addWidget(open_session_btn)
         buttons_layout.addWidget(remove_session_btn)
+        
         layout.addLayout(buttons_layout)
 
         return panel
@@ -385,18 +388,25 @@ class LauncherScreen(QWidget):
             self.current_task_data = task
             
             # Auto-fill session fields from task
-            self.device_name_input.setText(task['project'])  # Use project as device
+            if task.get('device_name'):
+                self.device_name_input.setText(task['device_name'])
             self.priority_combo.setCurrentText(task['suite'])  # P0, P1, etc.
             
             # Visual feedback
             self.assigned_tasks_combo.setStyleSheet("background-color: #d1ecf1;")  # Blue - selected
             
+            message_parts = [
+                f"Project: {task['project']}",
+                f"Suite: {task['suite']}",
+            ]
+            if task.get('device_name'):
+                message_parts.append(f"Device: {task['device_name']}")
+            message_parts.append(f"Auditor: {task['auditor_username']}")
+            
             QMessageBox.information(
                 self, 
                 "Task Selected",
-                f"Auto-filled session from task assignment:\n\n"
-                f"Project: {task['project']}\n"
-                f"Suite: {task['suite']}\n"
-                f"Auditor: {task['auditor_username']}\n\n"
-                f"Live Audit Mode will be auto-enabled with {task['auditor_username']}."
+                f"Auto-filled session from task assignment:\n\n" +
+                "\n".join(message_parts) +
+                f"\n\nLive Audit Mode will be auto-enabled with {task['auditor_username']}."
             )

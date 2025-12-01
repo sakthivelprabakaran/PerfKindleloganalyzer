@@ -238,6 +238,14 @@ class LiveAuditWindow(QWidget):
             status_item = QTableWidgetItem(row['status'])
             status_item.setForeground(QColor("black"))
             
+            if row['status'] == "Blocked":
+                status_item.setBackground(QColor("#ffcccc")) # Light red
+                status_item.setForeground(QColor("#cc0000")) # Dark red text
+            elif row['status'] == "Approved":
+                status_item.setBackground(QColor("#d4edda")) # Light green
+            elif row['status'] == "Rejected":
+                status_item.setBackground(QColor("#f8d7da")) # Light red
+            
             self.table.setItem(i, 0, id_item)
             self.table.setItem(i, 1, name_item)
             self.table.setItem(i, 2, executor_item)
@@ -398,7 +406,7 @@ class LiveAuditWindow(QWidget):
             status = row.get('status', 'Pending')
             
             # Check if Blocked/NA
-            if ref_val is None or ref_val == 'N/A':
+            if status == 'Blocked' or ref_val is None or ref_val == 'N/A':
                 stats['Blocked_NA'] += 1
             else:
                 try:

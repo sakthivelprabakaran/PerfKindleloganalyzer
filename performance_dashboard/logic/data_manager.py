@@ -1,6 +1,8 @@
 import pandas as pd
-import shutil
 import os
+import time
+import requests
+import tempfile
 from PyQt5.QtCore import QThread, pyqtSignal, QObject
 
 class SaveThread(QThread):
@@ -43,6 +45,26 @@ class DataManager:
         for the selected priority.
         """
         template_path = "performance_dashboard/assets/template_test_cases.xlsx"
+        
+        # Try to download master template from server if URL is provided
+        server_url = session_info.get('server_url')
+        if server_url:
+            try:
+                print(f"Attempting to download master template from {server_url}...")
+                response = requests.get(f"{server_url}/template", timeout=5)
+                if response.status_code == 200:
+                    # Save to a temporary file
+                    temp_dir = tempfile.gettempdir()
+                    temp_template_path = os.path.join(temp_dir, "master_template_downloaded.xlsx")
+                    with open(temp_template_path, 'wb') as f:
+                        f.write(response.content)
+                    template_path = temp_template_path
+                    print("✅ Successfully downloaded master template from server.")
+                else:
+                    print(f"⚠️ Failed to download template: {response.status_code}. Using local fallback.")
+            except Exception as e:
+                print(f"⚠️ Error downloading template: {e}. Using local fallback.")
+
         destination_path = os.path.join(session_info['project_path'], session_info['file_name'])
         priority = session_info.get('priority')
 

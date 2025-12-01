@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QGroupBox, QLabel, QPushButton,
     QTextEdit, QTableWidget, QTabWidget, QSplitter,
     QTableWidgetItem, QHeaderView, QMessageBox, QFrame, QLineEdit, QComboBox, QCompleter, QScrollArea,
-    QStatusBar, QGridLayout, QCheckBox, QListWidget, QListWidgetItem
+    QStatusBar, QGridLayout, QCheckBox, QListWidget, QListWidgetItem, QInputDialog
 )
 from PyQt5.QtGui import QPainter, QFont, QColor, QBrush
 from PyQt5.QtCore import Qt, QTimer, QTime, QStringListModel, QSize
@@ -270,6 +270,12 @@ class ExecutionDashboard(QWidget):
         self.retest_btn = QPushButton("Retest")
         self.retest_btn.clicked.connect(self.retest_current_case)
         iteration_layout.addWidget(self.retest_btn)
+
+        # Block Button
+        self.block_btn = QPushButton("🚫 Block Test Case")
+        self.block_btn.clicked.connect(self.block_test_case)
+        self.block_btn.setStyleSheet("background-color: #ffcccc; color: #cc0000;")
+        iteration_layout.addWidget(self.block_btn)
 
         layout.addWidget(iteration_group)
 
@@ -1308,30 +1314,56 @@ class ExecutionDashboard(QWidget):
             self.jump_to_input.clear()
 
     def retest_current_case(self):
-        """Clears the results for the current test case to allow for re-testing."""
-        if self.current_test_case is None:
-            return
-
-        reply = QMessageBox.question(self, 'Confirm Retest',
-                                     "Are you sure you want to clear all results for this test case?",
+        """Resets the current test case for retesting."""
+        reply = QMessageBox.question(self, 'Retest Confirmation',
+                                     "Are you sure you want to retest this case? All current iterations will be cleared.",
                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
 
         if reply == QMessageBox.Yes:
+            self.reset_timer_and_iterations()
+            # Clear data in data manager
             active_sheet = self.state.get_active_sheet()
-            index = self.state.get_current_test_case_index()
-
-            # This new method in DataManager will clear the relevant cells
-            updated_test_case = self.data_manager.clear_test_case_results(active_sheet, index)
-
-            if updated_test_case is not None:
-                self.current_test_case = updated_test_case
-                self.update_total_n_points()
-                self.update_results_tab()
-                self.update_current_results_display()
-                self.reset_timer_and_iterations()
-                QMessageBox.information(self, "Success", "Test case results have been cleared.")
-            else:
-                QMessageBox.warning(self, "Error", "Could not clear test case results.")
+            current_index = self.state.get_current_test_case_index()
+            
+            # Clear iterations in dataframe
+            df = self.data_manager.get_sheet_data(active_sheet)
+            for i in range(1, 6):
+                df.at[current_index, f"Iteration{i}"] = ""
+            df.at[current_index, "Average"] = ""
+            self.data_manager.workbook[active_sheet] = df
+            self.data_manager.save_to_excel_async()
+            
+            self.update_results_tab()
+            self.update_current_results_display()
+            
+    def block_test_case(self):
+        """Marks the current test case as blocked."""
+        if self.current_test_case is None or (hasattr(self.current_test_case, 'empty') and self.current_test_case.empty):
+            return
+            
+        reason, ok = QInputDialog.getText(self, "Block Test Case", "Reason for blocking:")
+        if ok and reason:
+            # Save reason to notes
+            current_notes = self.notes_input.toPlainText()
+            new_notes = f"[BLOCKED]: {reason}\n{current_notes}"
+            self.notes_input.setText(new_notes)
+            self.save_notes()
+            
+            # Submit as blocked
+            if self.live_mode:
+                tc_id = self.current_test_case.get("Test Case ID", "")
+                tc_name = self.current_test_case.get("Test Case Name", "")
+                suite_name = self.state.get_active_sheet()
+                project_name = self.state.current_session.get('project', 'KindleLogAnalyzer') if self.state.current_session else 'KindleLogAnalyzer'
+                
+                self.network_manager.submit_result(
+                    tc_id, tc_name, "0", 
+                    suite_name=suite_name, project_name=project_name,
+                    notes=new_notes, baseline="", status="Blocked"
+                )
+                
+            QMessageBox.warning(self, "Blocked", "Test case marked as blocked.")
+            self.navigate_next()
 
     def save_session(self):
         """Saves the current session to disk in the background."""

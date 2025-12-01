@@ -201,7 +201,7 @@ class NetworkManager(QObject):
             except Exception as e:
                 self.log(f"Error during disconnect: {e}")
 
-    def submit_result(self, test_case_id, test_case_name, value, suite_name="Performance", project_name="KindleLogAnalyzer", notes="", baseline=""):
+    def submit_result(self, test_case_id, test_case_name, value, suite_name="Performance", project_name="KindleLogAnalyzer", notes="", baseline="", status=None):
         """Submits a test result to the server."""
         try:
             # Ensure value is a float string
@@ -215,7 +215,8 @@ class NetworkManager(QObject):
                 "project_name": project_name,
                 "suite_name": suite_name,
                 "notes": notes,
-                "baseline": baseline
+                "baseline": baseline,
+                "status": status
             }
             
             self.log(f"Submitting result: {test_case_name} = {value_float} (suite: {suite_name})")
@@ -253,6 +254,44 @@ class NetworkManager(QObject):
         except Exception as e:
             self.log(f"Error fetching notifications: {e}")
             return []
+
+    def upload_template(self, file_path):
+        """Uploads a master template file to the server."""
+        try:
+            if not os.path.exists(file_path):
+                self.log(f"Template file not found: {file_path}")
+                return False, "File not found"
+
+            with open(file_path, 'rb') as f:
+                files = {'file': (os.path.basename(file_path), f, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')}
+                response = requests.post(f"{self.server_url}/template", files=files, headers=self.headers, timeout=60)
+
+            if response.status_code == 200:
+                self.log("✅ Template uploaded successfully")
+                return True, "Success"
+            else:
+                self.log(f"❌ Template upload failed: {response.status_code} - {response.text}")
+                return False, f"Server Error: {response.text}"
+        except Exception as e:
+            self.log(f"❌ Error uploading template: {e}")
+            return False, str(e)
+
+    def download_template(self, save_path):
+        """Downloads the master template from the server."""
+        try:
+            response = requests.get(f"{self.server_url}/template", headers=self.headers, timeout=60)
+            
+            if response.status_code == 200:
+                with open(save_path, 'wb') as f:
+                    f.write(response.content)
+                self.log("✅ Template downloaded successfully")
+                return True
+            else:
+                self.log(f"❌ Template download failed: {response.status_code}")
+                return False
+        except Exception as e:
+            self.log(f"❌ Error downloading template: {e}")
+            return False
 
     def mark_read(self, result_id):
         """Marks a notification as read."""

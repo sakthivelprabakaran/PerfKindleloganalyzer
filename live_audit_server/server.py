@@ -140,6 +140,7 @@ class TaskAssignment(Base):
     id = Column(Integer, primary_key=True, index=True)
     project = Column(String)  # Kindle, Mainline, etc.
     suite = Column(String)    # P0, P1, P2, Adhoc
+    device_name = Column(String, default="")  # Device name (e.g., Kindle Paperwhite)
     executor_username = Column(String)
     auditor_username = Column(String)
     status = Column(String, default="Assigned")  # Assigned, In Progress, Completed
@@ -173,6 +174,13 @@ class Project(Base):
     name = Column(String, unique=True)
     description = Column(String, default="")
 
+class Suite(Base):
+    __tablename__ = "suites"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    description = Column(String, default="")
+    created_at = Column(DateTime, default=datetime.now)
+
 Base.metadata.create_all(bind=engine)
 
 # --- Pydantic Models ---
@@ -185,6 +193,7 @@ class ResultCreate(BaseModel):
     value: float
     notes: str = ""
     baseline: str = ""
+    status: Optional[str] = None # Optional status override (e.g., "Blocked")
 
 class ResultUpdate(BaseModel):
     status: str
@@ -217,6 +226,7 @@ class ResultResponse(BaseModel):
 class TaskAssignmentCreate(BaseModel):
     project: str
     suite: str
+    device_name: str = ""
     executor_username: str
     auditor_username: str
 
@@ -224,11 +234,25 @@ class TaskAssignmentResponse(BaseModel):
     id: int
     project: str
     suite: str
+    device_name: str
     executor_username: str
     auditor_username: str
     status: str
     created_at: datetime
 
+    class Config:
+        from_attributes = True
+
+class SuiteCreate(BaseModel):
+    name: str
+    description: str = ""
+
+class SuiteResponse(BaseModel):
+    id: int
+    name: str
+    description: str
+    created_at: datetime
+    
     class Config:
         from_attributes = True
 
@@ -566,7 +590,7 @@ def submit_result(result: ResultCreate, current_user: User = Depends(get_current
         existing_result.notes = result.notes
         existing_result.baseline = result.baseline
         existing_result.timestamp = datetime.now()  # Update timestamp to latest submission
-        existing_result.status = auto_status  # Reset status to Pending for re-review
+        existing_result.status = result.status if result.status else auto_status  # Use provided status or reset to Pending
         existing_result.auditor_comment = ""  # Clear previous auditor comment
         existing_result.is_read_by_executor = 0  # Reset read flag
         db_result = existing_result
@@ -586,7 +610,7 @@ def submit_result(result: ResultCreate, current_user: User = Depends(get_current
             deviation_from_previous=deviation_from_previous,
             notes=result.notes,
             baseline=result.baseline,
-            status=auto_status
+            status=result.status if result.status else auto_status # Use provided status or auto-calculated
         )
         db.add(db_result)
     
@@ -721,6 +745,52 @@ def get_all_assignments(db: Session = Depends(get_db)):
     """Admin fetches all task assignments."""
     return db.query(TaskAssignment).order_by(TaskAssignment.created_at.desc()).all()
 
+# Suite Management Endpoints
+@app.get("/suites", response_model=List[SuiteResponse])
+def get_suites(db: Session = Depends(get_db)):
+    """Get all suites."""
+    return db.query(Suite).order_by(Suite.name).all()
+
+@app.post("/suites", response_model=SuiteResponse)
+@retry_on_db_lock()
+def create_suite(suite: SuiteCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Admin creates a new suite."""
+    # Verify admin role
+    if "admin" not in current_user.role.lower():
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Check for duplicate
+    existing = db.query(Suite).filter(Suite.name == suite.name).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Suite '{suite.name}' already exists")
+    
+    db_suite = Suite(name=suite.name, description=suite.description)
+    db.add(db_suite)
+    db.commit()
+    db.refresh(db_suite)
+    return db_suite
+
+@app.delete("/suites/{suite_id}")
+@retry_on_db_lock()
+def delete_suite(suite_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Admin deletes a suite (only if not referenced in task assignments)."""
+    # Verify admin role
+    if "admin" not in current_user.role.lower():
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    suite = db.query(Suite).filter(Suite.id == suite_id).first()
+    if not suite:
+        raise HTTPException(status_code=404, detail="Suite not found")
+    
+    # Check if suite is referenced in any task assignments
+    referenced = db.query(TaskAssignment).filter(TaskAssignment.suite == suite.name).first()
+    if referenced:
+        raise HTTPException(status_code=400, detail=f"Cannot delete suite '{suite.name}' - it is referenced in existing task assignments")
+    
+    db.delete(suite)
+    db.commit()
+    return {"message": f"Suite '{suite.name}' deleted successfully"}
+
 # User Management Endpoints
 @app.post("/users", response_model=UserResponse)
 @retry_on_db_lock()
@@ -844,6 +914,45 @@ def validate_brd_format(file_path: str, suite: str) -> tuple[bool, str]:
     except Exception as e:
         return False, f"Error reading Excel file: {str(e)}"
 
+# Template Management
+TEMPLATE_DIR = "templates"
+TEMPLATE_FILENAME = "master_template.xlsx"
+
+@app.get("/template")
+async def get_template():
+    """Downloads the current master template."""
+    file_path = os.path.join(TEMPLATE_DIR, TEMPLATE_FILENAME)
+    if os.path.exists(file_path):
+        return FileResponse(file_path, filename=TEMPLATE_FILENAME, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    else:
+        raise HTTPException(status_code=404, detail="Master template not found on server.")
+
+@app.post("/template")
+async def upload_template(file: UploadFile = File(...)):
+    """Uploads a new master template, backing up the old one."""
+    if not file.filename.endswith('.xlsx'):
+        raise HTTPException(status_code=400, detail="Invalid file type. Only .xlsx files are allowed.")
+
+    # Ensure directory exists
+    if not os.path.exists(TEMPLATE_DIR):
+        os.makedirs(TEMPLATE_DIR)
+
+    file_path = os.path.join(TEMPLATE_DIR, TEMPLATE_FILENAME)
+
+    # Backup existing template
+    if os.path.exists(file_path):
+        backup_name = f"master_template_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        backup_path = os.path.join(TEMPLATE_DIR, backup_name)
+        shutil.move(file_path, backup_path)
+
+    # Save new template
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        return {"message": "Template uploaded successfully", "filename": file.filename}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save template: {str(e)}")
+
 @app.post("/upload_brd")
 @retry_on_db_lock_async()
 async def upload_brd(
@@ -963,6 +1072,26 @@ if __name__ == "__main__":
         print("Please stop the existing server or change the port.")
         print(f"To kill the process using port {SERVER_PORT}, run: lsof -ti:{SERVER_PORT} | xargs kill -9\n")
         exit(1)
+
+    # Initialize default suites if database is empty
+    try:
+        db = SessionLocal()
+        suite_count = db.query(Suite).count()
+        if suite_count == 0:
+            print("📝 Initializing default suites...")
+            default_suites = [
+                Suite(name="P0", description="Priority 0 - Critical"),
+                Suite(name="P1", description="Priority 1 - High"),
+                Suite(name="P2", description="Priority 2 - Medium"),
+                Suite(name="Adhoc", description="Ad-hoc testing"),
+            ]
+            for suite in default_suites:
+                db.add(suite)
+            db.commit()
+            print("✅ Default suites initialized: P0, P1, P2, Adhoc")
+        db.close()
+    except Exception as e:
+        print(f"⚠️ Warning: Could not initialize default suites: {e}")
 
     print("🚀 Starting Live Audit Server...")
     uvicorn.run(socket_app, host="0.0.0.0", port=SERVER_PORT)
