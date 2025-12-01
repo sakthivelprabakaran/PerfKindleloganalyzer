@@ -54,7 +54,7 @@ class LiveAuditWindow(QWidget):
         header_layout = QHBoxLayout()
         header_layout.addWidget(QLabel("<b>Live Audit Dashboard</b>"))
         
-        self.server_input = QLineEdit("http://localhost:8000")
+        self.server_input = QLineEdit("http://127.0.0.1:8000")
         self.server_input.setPlaceholderText("Server URL")
         self.server_input.setFixedWidth(200)
         connect_btn = QPushButton("Connect")

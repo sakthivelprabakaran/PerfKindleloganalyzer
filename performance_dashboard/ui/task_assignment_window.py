@@ -217,7 +217,7 @@ class TaskAssignmentWindow(QWidget):
         self.resize(1000, 700)
         
         self.return_callback = return_callback
-        self.server_url = "http://localhost:8000"
+        self.server_url = "http://127.0.0.1:8000"
         self.auth_token = auth_token
         self.headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
         

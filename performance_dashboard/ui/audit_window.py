@@ -32,7 +32,7 @@ class AuditWindow(QWidget):
         
         # For My Assignments functionality
         self.username = ""
-        self.server_url = "http://localhost:8000"
+        self.server_url = "http://127.0.0.1:8000"
         self.my_assignments = []
         
         self.init_ui()

@@ -3,7 +3,7 @@ import sys
 
 # --- Server Configuration ---
 # Change SERVER_IP to the actual IP address when deploying (e.g., "192.168.1.50")
-SERVER_IP = "localhost"
+SERVER_IP = "127.0.0.1"
 SERVER_PORT = 8000
 SERVER_URL = f"http://{SERVER_IP}:{SERVER_PORT}"
 

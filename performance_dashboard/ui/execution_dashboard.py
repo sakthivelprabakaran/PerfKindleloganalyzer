@@ -164,7 +164,7 @@ class ExecutionDashboard(QWidget):
         self.live_chk = QCheckBox("Live Audit Mode")
         # self.live_chk.setChecked(True)  # MOVED: Set in __init__ after UI is fully built
         self.live_chk.stateChanged.connect(self.toggle_live_mode)
-        self.server_ip_input = QLineEdit("http://localhost:8000")
+        self.server_ip_input = QLineEdit("http://127.0.0.1:8000")
         self.server_ip_input.setPlaceholderText("Server URL")
         self.server_ip_input.setEnabled(False)
         
@@ -489,7 +489,7 @@ class ExecutionDashboard(QWidget):
         # Auto-enable Live Mode if task assignment exists (NEW)
         if 'task_assignment' in session_data and session_data['task_assignment']:
             task = session_data['task_assignment']
-            server_url = session_data.get('server_url', 'http://localhost:8000')
+            server_url = session_data.get('server_url', 'http://127.0.0.1:8000')
             
             # Set server URL
             self.server_ip_input.setText(server_url)

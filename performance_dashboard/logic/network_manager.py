@@ -27,7 +27,7 @@ class NetworkManager(QObject):
         super().__init__()
         self.executor_name = executor_name
         self.token = token
-        self.server_url = "http://localhost:8000"
+        self.server_url = "http://127.0.0.1:8000"
         self.headers = {"Authorization": f"Bearer {token}"} if token else {}
         self.timeout = REQUEST_TIMEOUT
         

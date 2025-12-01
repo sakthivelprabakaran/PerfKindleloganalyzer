@@ -1,4 +1,7 @@
 import pandas as pd
+# Suppress pandas FutureWarning
+pd.set_option('future.no_silent_downcasting', True)
+
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QGroupBox, QLabel, QLineEdit,
     QComboBox, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView,
@@ -68,7 +71,7 @@ class LauncherScreen(QWidget):
         # Server URL Input (NEW)
         server_layout = QHBoxLayout()
         server_layout.addWidget(QLabel("Server:"))
-        self.server_url_input = QLineEdit("http://localhost:8000")
+        self.server_url_input = QLineEdit("http://127.0.0.1:8000")
         self.server_url_input.setFixedWidth(200)
        
         server_layout.addWidget(self.server_url_input)
