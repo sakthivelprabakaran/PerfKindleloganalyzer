@@ -249,7 +249,7 @@ class TaskAssignmentResponse(BaseModel):
     id: int
     project: str
     suite: str
-    device_name: str
+    device_name: Optional[str] = None
     executor_username: str
     auditor_username: str
     status: str
@@ -290,7 +290,6 @@ class SuiteResponse(BaseModel):
     id: int
     name: str
     description: str
-    created_at: datetime
     
     class Config:
         from_attributes = True
