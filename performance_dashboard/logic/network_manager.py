@@ -333,3 +333,38 @@ class NetworkManager(QObject):
         except Exception as e:
             self.log(f"❌ Error updating status: {e}")
             return False
+    
+    def log_productivity(self, executor_username, session_file_name, test_case_id, test_case_name, 
+                        project_name, suite_name, n_points):
+        """Log productivity data (N-points) to the server"""
+        try:
+            from datetime import datetime
+            
+            payload = {
+                "executor_username": executor_username,
+                "session_file_name": session_file_name,
+                "test_case_id": test_case_id,
+                "test_case_name": test_case_name,
+                "project_name": project_name,
+                "suite_name": suite_name,
+                "n_points": n_points,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            response = requests.post(
+                f"{self.server_url}/productivity/log",
+                json=payload,
+                headers=self.headers,
+                timeout=self.timeout
+            )
+            
+            if response.status_code == 200:
+                self.log(f"✅ Logged {n_points} N-points for {test_case_id}")
+                return True, response.json()
+            else:
+                self.log(f"❌ Failed to log productivity: {response.status_code}")
+                return False, response.text
+                
+        except Exception as e:
+            self.log(f"❌ Error logging productivity: {e}")
+            return False, str(e)

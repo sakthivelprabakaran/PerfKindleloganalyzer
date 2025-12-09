@@ -1,10 +1,12 @@
+import requests
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
-    QTableWidgetItem, QHeaderView, QGroupBox, QComboBox, QMessageBox, QDialog,
-    QFormLayout, QDialogButtonBox, QLineEdit, QTabWidget, QCheckBox
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
+    QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox, QDialog,
+    QFormLayout, QComboBox, QTabWidget, QFileDialog, QGroupBox, QDialogButtonBox, QCheckBox
 )
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QColor, QFont
+from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtGui import QFont, QColor
+from performance_dashboard.ui.productivity_metrics_window import ProductivityMetricsWindow
 import requests
 
 # Dialog for Creating/Editing Users
@@ -272,6 +274,15 @@ class TaskAssignmentWindow(QWidget):
         self.tabs.addTab(self.create_projects_tab(), "📁 Projects")
         self.tabs.addTab(self.create_suites_tab(), "🎯 Suites")
         self.tabs.addTab(self.create_assignments_tab(), "📋 Task Assignments")
+        
+        # Add Productivity Metrics tab
+        self.productivity_window = ProductivityMetricsWindow(
+            server_url=self.server_url,
+            auth_token=self.auth_token,
+            parent=self
+        )
+        self.tabs.addTab(self.productivity_window, "📊 Productivity Metrics")
+        
         layout.addWidget(self.tabs)
 
     def create_users_tab(self):

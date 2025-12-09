@@ -179,6 +179,21 @@ class Suite(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
     description = Column(String, default="")
+
+class ProductivityLog(Base):
+    __tablename__ = "productivity_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    executor_username = Column(String, index=True)
+    session_file_name = Column(String)
+    test_case_id = Column(String)
+    test_case_name = Column(String)
+    project_name = Column(String)
+    suite_name = Column(String)
+    n_points = Column(Integer, default=0)
+    timestamp = Column(DateTime, default=datetime.now)
+    session_date = Column(String, index=True)  # YYYY-MM-DD for daily aggregation
+    week_number = Column(Integer, index=True)  # ISO week number
+    year = Column(Integer)  # Year for week_number
     created_at = Column(DateTime, default=datetime.now)
 
 Base.metadata.create_all(bind=engine)
@@ -239,6 +254,30 @@ class TaskAssignmentResponse(BaseModel):
     auditor_username: str
     status: str
     created_at: datetime
+
+class ProductivityLogCreate(BaseModel):
+    executor_username: str
+    session_file_name: str
+    test_case_id: str
+    test_case_name: str
+    project_name: str
+    suite_name: str
+    n_points: int
+    timestamp: Optional[datetime] = None
+
+class ProductivityResponse(BaseModel):
+    id: int
+    executor_username: str
+    session_file_name: str
+    test_case_id: str
+    test_case_name: str
+    project_name: str
+    suite_name: str
+    n_points: int
+    timestamp: datetime
+    session_date: str
+    week_number: int
+    year: int
 
     class Config:
         from_attributes = True
@@ -1059,6 +1098,252 @@ def check_brd_status(project: str, suite: str, db: Session = Depends(get_db)):
             "version": brd.version
         }
     return {"exists": False}
+
+# =============================================================================
+# PRODUCTIVITY TRACKING ENDPOINTS
+# =============================================================================
+
+@app.post("/productivity/log")
+def log_productivity(log: ProductivityLogCreate, db: Session = Depends(get_db)):
+    """Log N-points when a test case is completed"""
+    from datetime import datetime
+    
+    # Use provided timestamp or current time
+    timestamp = log.timestamp if log.timestamp else datetime.now()
+    
+    # Calculate session_date, week_number, and year
+    session_date = timestamp.strftime("%Y-%m-%d")
+    week_number = timestamp.isocalendar()[1]  # ISO week number
+    year = timestamp.year
+    
+    # Create log entry
+    db_log = ProductivityLog(
+        executor_username=log.executor_username,
+        session_file_name=log.session_file_name,
+        test_case_id=log.test_case_id,
+        test_case_name=log.test_case_name,
+        project_name=log.project_name,
+        suite_name=log.suite_name,
+        n_points=log.n_points,
+        timestamp=timestamp,
+        session_date=session_date,
+        week_number=week_number,
+        year=year
+    )
+    
+    db.add(db_log)
+    db.commit()
+    db.refresh(db_log)
+    
+    return {"status": "success", "id": db_log.id}
+
+@app.get("/productivity/daily/{username}")
+def get_daily_productivity(username: str, date: str = None, db: Session = Depends(get_db)):
+    """Get daily productivity for a specific user"""
+    from datetime import datetime, date as dt_date
+    
+    # Use provided date or today
+    if date:
+        target_date = date
+    else:
+        target_date = datetime.now().strftime("%Y-%m-%d")
+    
+    # Query logs for this user on this date
+    logs = db.query(ProductivityLog).filter(
+        ProductivityLog.executor_username == username,
+        ProductivityLog.session_date == target_date
+    ).all()
+    
+    total_n_points = sum(log.n_points for log in logs)
+    test_cases_completed = len(logs)
+    
+    # Group by suite
+    breakdown_by_suite = {}
+    for log in logs:
+        suite = log.suite_name
+        breakdown_by_suite[suite] = breakdown_by_suite.get(suite, 0) + log.n_points
+    
+    return {
+        "username": username,
+        "date": target_date,
+        "total_n_points": total_n_points,
+        "test_cases_completed": test_cases_completed,
+        "breakdown_by_suite": breakdown_by_suite
+    }
+
+@app.get("/productivity/weekly/{username}")
+def get_weekly_productivity(username: str, week: int = None, year: int = None, db: Session = Depends(get_db)):
+    """Get weekly productivity summary"""
+    from datetime import datetime
+    
+    # Use provided week/year or current
+    if not week or not year:
+        now = datetime.now()
+        iso_cal = now.isocalendar()
+        week = iso_cal[1]
+        year = iso_cal[0]
+    
+    # Query logs for this user in this week
+    logs = db.query(ProductivityLog).filter(
+        ProductivityLog.executor_username == username,
+        ProductivityLog.week_number == week,
+        ProductivityLog.year == year
+    ).all()
+    
+    total_n_points = sum(log.n_points for log in logs)
+    test_cases_completed = len(logs)
+    
+    # Group by date for daily breakdown
+    daily_breakdown = {}
+    for log in logs:
+        date = log.session_date
+        daily_breakdown[date] = daily_breakdown.get(date, 0) + log.n_points
+    
+    # Convert to list format
+    daily_list = [{"date": d, "points": p} for d, p in sorted(daily_breakdown.items())]
+    
+    avg_points_per_day = total_n_points / max(len(daily_breakdown), 1)
+    
+    return {
+        "username": username,
+        "week": week,
+        "year": year,
+        "total_n_points": total_n_points,
+        "daily_breakdown": daily_list,
+        "test_cases_completed": test_cases_completed,
+        "avg_points_per_day": round(avg_points_per_day, 1)
+    }
+
+@app.get("/productivity/leaderboard")
+def get_leaderboard(period: str = "week", db: Session = Depends(get_db)):
+    """Get team leaderboard"""
+    from datetime import datetime
+    from sqlalchemy import func
+    
+    now = datetime.now()
+    
+    if period == "day":
+        target_date = now.strftime("%Y-%m-%d")
+        query = db.query(
+            ProductivityLog.executor_username,
+            func.sum(ProductivityLog.n_points).label('total_points')
+        ).filter(
+            ProductivityLog.session_date == target_date
+        ).group_by(ProductivityLog.executor_username)
+    
+    elif period == "week":
+        iso_cal = now.isocalendar()
+        week = iso_cal[1]
+        year = iso_cal[0]
+        query = db.query(
+            ProductivityLog.executor_username,
+            func.sum(ProductivityLog.n_points).label('total_points')
+        ).filter(
+            ProductivityLog.week_number == week,
+            ProductivityLog.year == year
+        ).group_by(ProductivityLog.executor_username)
+    
+    elif period == "month":
+        month = now.month
+        year = now.year
+        query = db.query(
+            ProductivityLog.executor_username,
+            func.sum(ProductivityLog.n_points).label('total_points')
+        ).filter(
+            func.strftime('%Y-%m', ProductivityLog.session_date) == f"{year}-{month:02d}"
+        ).group_by(ProductivityLog.executor_username)
+    
+    else:
+        return {"error": "Invalid period. Use 'day', 'week', or 'month'"}
+    
+    results = query.order_by(func.sum(ProductivityLog.n_points).desc()).all()
+    
+    # Fetch full names from users table
+    leaderboard = []
+    for rank, (username, points) in enumerate(results, 1):
+        user = db.query(User).filter(User.username == username).first()
+        full_name = user.full_name if user else username
+        
+        leaderboard.append({
+            "rank": rank,
+            "username": username,
+            "full_name": full_name,
+            "points": points
+        })
+    
+    # Calculate team average
+    team_total = sum(item["points"] for item in leaderboard)
+    team_average = team_total / max(len(leaderboard), 1)
+    
+    return {
+        "period": period,
+        "leaderboard": leaderboard,
+        "team_average": round(team_average, 1)
+    }
+
+@app.get("/productivity/all")
+def get_all_productivity(
+    period: str = "week",
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get productivity data for all executors (admin only)"""
+    # Check admin permission
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    from datetime import datetime
+    from sqlalchemy import func
+    
+    now = datetime.now()
+    
+    if period == "week":
+        iso_cal = now.isocalendar()
+        week = iso_cal[1]
+        year = iso_cal[0]
+        query = db.query(
+            ProductivityLog.executor_username,
+            func.sum(ProductivityLog.n_points).label('total_points'),
+            func.count(ProductivityLog.id).label('test_cases')
+        ).filter(
+            ProductivityLog.week_number == week,
+            ProductivityLog.year == year
+        ).group_by(ProductivityLog.executor_username)
+    else:
+        # Can add other periods later
+        query = db.query(
+            ProductivityLog.executor_username,
+            func.sum(ProductivityLog.n_points).label('total_points'),
+            func.count(ProductivityLog.id).label('test_cases')
+        ).group_by(ProductivityLog.executor_username)
+    
+    results = query.all()
+    
+    executors = []
+    for username, points, test_cases in results:
+        user = db.query(User).filter(User.username == username).first()
+        full_name = user.full_name if user else username
+        
+        # Calculate daily avg (assuming 5 working days per week)
+        daily_avg = points / 5 if period == "week" else points
+        
+        executors.append({
+            "username": username,
+            "full_name": full_name,
+            "total_points": points,
+            "daily_avg": round(daily_avg, 1),
+            "test_cases": test_cases
+        })
+    
+    team_total = sum(e["total_points"] for e in executors)
+    team_average = team_total / max(len(executors), 1)
+    
+    return {
+        "period": period,
+        "executors": executors,
+        "team_total": team_total,
+        "team_average": round(team_average, 1)
+    }
 
 if __name__ == "__main__":
     # Check if port is already in use

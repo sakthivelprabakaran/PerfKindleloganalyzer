@@ -451,8 +451,12 @@ class ExecutionDashboard(QWidget):
         self.session_selector.clear()
         self.state.load_sessions() # Refresh session list
         
+        # Filter sessions by current user
+        current_username = self.user_context.get('username', '') if self.user_context else ''
+        user_sessions = [s for s in self.state.sessions if s.get('username', '') == current_username]
+        
         current_index = 0
-        for i, session in enumerate(self.state.sessions):
+        for i, session in enumerate(user_sessions):
             display_text = f"{session.get('file_name')} ({session.get('priority')})"
             self.session_selector.addItem(display_text, session.get('file_name'))
             if session.get('file_name') == session_name:
@@ -727,6 +731,7 @@ class ExecutionDashboard(QWidget):
         if was_final_iteration:
             self.update_total_n_points()
             self.update_results_tab() # Ensure table is updated with the completed test case
+            self.update_current_results_display()  # Update the Current Iteration Results table
 
             # Check for Baseline Requirement
             if self.baseline_required:
@@ -740,6 +745,37 @@ class ExecutionDashboard(QWidget):
             # Auto-navigate after completion
             self.reset_timer_and_iterations()
             QMessageBox.information(self, "Completed", "All 5 iterations for this test case are complete. Navigating to the next test case.")
+            
+            # Log productivity (N-points) for ALL completed test cases
+            # This happens BEFORE Live Audit submission to ensure it always runs
+            if self.current_test_case is not None and self.network_manager:
+                try:
+                    tc_id = self.current_test_case.get("Test Case ID", "")
+                    tc_name = self.current_test_case.get("Test Case Name", "")
+                    suite_name = self.state.get_active_sheet()
+                    project_name = self.state.current_session.get('project', 'Unknown') if self.state.current_session else 'Unknown'
+                    executor_username = self.user_context.get('username', 'unknown') if self.user_context else 'unknown'
+                    session_file_name = self.state.current_session.get('file_name', 'unknown') if self.state.current_session else 'unknown'
+                    n_points = self.calculate_n_points(self.current_test_case)
+                    
+                    print(f"📊 Logging productivity: {executor_username} - {tc_id} - {n_points} points (Suite: {suite_name})")
+                    
+                    success, response = self.network_manager.log_productivity(
+                        executor_username=executor_username,
+                        session_file_name=session_file_name,
+                        test_case_id=tc_id,
+                        test_case_name=tc_name,
+                        project_name=project_name,
+                        suite_name=suite_name,
+                        n_points=n_points
+                    )
+                    
+                    if success:
+                        print(f"✅ Productivity logged: {n_points} points for {tc_id}")
+                    else:
+                        print(f"❌ Failed to log productivity: {response}")
+                except Exception as e:
+                    print(f"❌ Error logging productivity: {e}")
             
             # Live Audit Submission - ONLY submit average after all 5 iterations
             if self.live_mode and self.current_test_case is not None:
@@ -767,14 +803,16 @@ class ExecutionDashboard(QWidget):
                     if hasattr(self, 'baseline_iterations') and self.baseline_iterations:
                         baseline_data = f"Build: {self.baseline_build}, Iterations: {self.baseline_iterations}, Avg: {sum(self.baseline_iterations)/len(self.baseline_iterations):.3f}"
                     
+                    # Submit result to Live Audit
                     try:
                         self.network_manager.submit_result(
                             tc_id, tc_name, f"{average_value:.3f}", 
                             suite_name=suite_name, project_name=project_name,
                             notes=notes, baseline=baseline_data
                         )
+                        print(f"✅ Result submitted successfully for {tc_id}")
                     except Exception as e:
-                        print(f"Error submitting result: {e}")
+                        print(f"❌ Error submitting result: {e}")
             
             self.navigate_next()
         else:
@@ -1327,11 +1365,21 @@ class ExecutionDashboard(QWidget):
             
             # Clear iterations in dataframe
             df = self.data_manager.get_sheet_data(active_sheet)
+            
+            # Ensure columns are object type to accept empty strings without warning
+            cols_to_clear = [f"Iteration{i}" for i in range(1, 6)] + ["Average"]
+            for col in cols_to_clear:
+                if col in df.columns and df[col].dtype != 'object':
+                    df[col] = df[col].astype('object')
+
             for i in range(1, 6):
                 df.at[current_index, f"Iteration{i}"] = ""
             df.at[current_index, "Average"] = ""
             self.data_manager.workbook[active_sheet] = df
             self.data_manager.save_to_excel_async()
+            
+            # Refresh current_test_case with cleared data
+            self.current_test_case = self.data_manager.get_test_case(active_sheet, current_index)
             
             self.update_results_tab()
             self.update_current_results_display()
