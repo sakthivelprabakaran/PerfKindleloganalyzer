@@ -68,8 +68,51 @@ class DataManager:
         destination_path = os.path.join(session_info['project_path'], session_info['file_name'])
         priority = session_info.get('priority')
 
-        if not os.path.exists(session_info['project_path']):
-            os.makedirs(session_info['project_path'])
+        # Normalize and validate project_path for cross-platform compatibility
+        project_path = session_info['project_path']
+        
+        # Check if path starts with a Unix-style root that doesn't exist on Windows
+        # or vice versa (e.g., /Users/... on Windows, or C:\ on Mac/Linux)
+        import platform
+        current_os = platform.system()
+        
+        # Detect cross-platform path issues
+        is_cross_platform_path = False
+        if current_os == 'Windows' and project_path.startswith('/'):
+            # Unix-style path on Windows
+            is_cross_platform_path = True
+            error_msg = (
+                f"Cannot create session: Path '{project_path}' appears to be a Mac/Linux path, "
+                f"but you are running on Windows.\\n\\n"
+                f"Please use the Launch Page to create a new session with a Windows-compatible path "
+                f"(e.g., C:\\\\Users\\\\YourName\\\\Documents\\\\ProjectFolder)."
+            )
+        elif current_os in ['Darwin', 'Linux'] and len(project_path) > 1 and project_path[1] == ':':
+            # Windows-style path on Unix
+            is_cross_platform_path = True
+            error_msg = (
+                f"Cannot create session: Path '{project_path}' appears to be a Windows path, "
+                f"but you are running on {current_os}.\\n\\n"
+                f"Please use the Launch Page to create a new session with a Unix-compatible path "
+                f"(e.g., /Users/YourName/Documents/ProjectFolder)."
+            )
+        
+        if is_cross_platform_path:
+            return False, error_msg
+
+        # Normalize the path for the current OS
+        project_path = os.path.normpath(project_path)
+        session_info['project_path'] = project_path
+        destination_path = os.path.join(project_path, session_info['file_name'])
+
+        if not os.path.exists(project_path):
+            try:
+                os.makedirs(project_path, exist_ok=True)
+            except PermissionError as e:
+                return False, f"Permission denied: Cannot create directory at '{project_path}'. Error: {e}"
+            except Exception as e:
+                return False, f"Error creating project directory: {e}"
+
 
         try:
             # Read only the specific sheet for the selected priority

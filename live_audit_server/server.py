@@ -387,7 +387,24 @@ async def startup_event():
     except Exception as e:
         print(f"⚠️ Failed to enable WAL mode: {e}")
 
-    # 3. Create Default Admin if not exists
+    # 3. Database Migration: Add device_name column if missing
+    try:
+        with engine.connect() as connection:
+            # Check if device_name column exists in task_assignments table
+            result = connection.execute(text("PRAGMA table_info(task_assignments);")).fetchall()
+            column_names = [row[1] for row in result]
+            
+            if 'device_name' not in column_names:
+                print("🔄 Migrating database: Adding 'device_name' column to task_assignments...")
+                connection.execute(text("ALTER TABLE task_assignments ADD COLUMN device_name VARCHAR DEFAULT '';"))
+                connection.commit()
+                print("✅ Database migration complete: device_name column added")
+            else:
+                print("✅ Database schema up to date: device_name column exists")
+    except Exception as e:
+        print(f"⚠️ Database migration warning: {e}")
+
+    # 4. Create Default Admin if not exists
     try:
         db = SessionLocal()
         admin = db.query(User).filter(User.username == "admin").first()
