@@ -1,0 +1,263 @@
+ File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\engineio\async_drivers\asgi.py", line 75, in __call__
+    await self.other_asgi_app(scope, receive, send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\fastapi\applications.py", line 1139, in __call__
+    await super().__call__(scope, receive, send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\applications.py", line 107, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\middleware\errors.py", line 186, in __call__
+    raise exc
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\fastapi\routing.py", line 120, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\fastapi\routing.py", line 106, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\fastapi\routing.py", line 452, in app
+    content = await serialize_response(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+    )
+    ^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\fastapi\routing.py", line 278, in serialize_response
+    raise ResponseValidationError(
+    ...<3 lines>...
+    )
+fastapi.exceptions.ResponseValidationError: 5 validation errors:
+  {'type': 'missing', 'loc': ('response', 0, 'created_at'), 'msg': 'Field required', 'input': <__main__.Suite object at 0x000001E923719B70>}
+  {'type': 'missing', 'loc': ('response', 1, 'created_at'), 'msg': 'Field required', 'input': <__main__.Suite object at 0x000001E923719F60>}
+  {'type': 'missing', 'loc': ('response', 2, 'created_at'), 'msg': 'Field required', 'input': <__main__.Suite object at 0x000001E923719BE0>}
+  {'type': 'missing', 'loc': ('response', 3, 'created_at'), 'msg': 'Field required', 'input': <__main__.Suite object at 0x000001E923327930>}
+  {'type': 'missing', 'loc': ('response', 4, 'created_at'), 'msg': 'Field required', 'input': <__main__.Suite object at 0x000001E923327770>}
+
+  File "C:\Users\sakthimx\PycharmProjects\PerfKindleloganalyzer\live_audit_server\server.py", line 788, in get_suites
+    GET /suites
+INFO:     127.0.0.1:64614 - "GET /all_task_assignments HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlite3.OperationalError: no such column: task_assignments.device_name
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\uvicorn\protocols\http\h11_impl.py", line 403, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self.scope, self.receive, self.send
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\uvicorn\middleware\proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\engineio\async_drivers\asgi.py", line 75, in __call__
+    await self.other_asgi_app(scope, receive, send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\fastapi\applications.py", line 1139, in __call__
+    await super().__call__(scope, receive, send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\applications.py", line 107, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\middleware\errors.py", line 186, in __call__
+    raise exc
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\fastapi\routing.py", line 120, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\fastapi\routing.py", line 106, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\fastapi\routing.py", line 430, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\fastapi\routing.py", line 318, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\starlette\concurrency.py", line 32, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\anyio\to_thread.py", line 61, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        func, args, abandon_on_cancel=abandon_on_cancel, limiter=limiter
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\anyio\_backends\_asyncio.py", line 2525, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\anyio\_backends\_asyncio.py", line 986, in run
+    result = context.run(func, *args)
+  File "C:\Users\sakthimx\PycharmProjects\PerfKindleloganalyzer\live_audit_server\server.py", line 785, in get_all_assignments
+    return db.query(TaskAssignment).order_by(TaskAssignment.created_at.desc()).all()
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\query.py", line 2704, in all
+    return self._iter().all()  # type: ignore
+           ~~~~~~~~~~^^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\query.py", line 2857, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+                                                  ~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+        params,
+        ^^^^^^^
+        execution_options={"_sa_orm_load_options": self.load_options},
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2351, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<4 lines>...
+        conn,
+        ^^^^^
+    )
+    ^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+        statement, params or {}, execution_options=execution_options
+    )
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\sql\elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<8 lines>...
+        cache_hit=cache_hit,
+    )
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\sakthimx\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such column: task_assignments.device_name
+[SQL: SELECT task_assignments.id AS task_assignments_id, task_assignments.project AS task_assignments_project, task_assignments.suite AS task_assignments_suite, task_assignments.device_name AS task_assignments_device_name, task_assignments.executor_username AS task_assignments_executor_username, task_assignments.auditor_username AS task_assignments_auditor_username, task_assignments.status AS task_assignments_status, task_assignments.created_at AS task_assignments_created_at
+FROM task_assignments ORDER BY task_assignments.created_at DESC]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+
+
+
+PS C:\Users\sakthimx\PycharmProjects\PerfKindleloganalyzer> python .\main.py
+✓ Icon loaded: C:\Users\sakthimx\PycharmProjects\PerfKindleloganalyzer\assets\icons\win.ico
+Traceback (most recent call last):
+  File "C:\Users\sakthimx\PycharmProjects\PerfKindleloganalyzer\performance_dashboard\ui\launch_page.py", line 319, in open_selected_session
+    self.switch_to_dashboard(session_data)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\sakthimx\PycharmProjects\PerfKindleloganalyzer\performance_dashboard\main_window.py", line 70, in switch_to_dashboard
+    success, message = DataManager.create_session_file(session_data)
+                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\sakthimx\PycharmProjects\PerfKindleloganalyzer\performance_dashboard\logic\data_manager.py", line 72, in create_session_file
+    os.makedirs(session_info['project_path'])
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen os>", line 218, in makedirs
+  File "<frozen os>", line 218, in makedirs
+  File "<frozen os>", line 228, in makedirs
+PermissionError: [WinError 5] Access is denied: '/Users/sakthivelprabakaran'
+PS C:\Users\sakthimx\PycharmProjects\PerfKindleloganalyzer> python .\main.py
+✓ Icon loaded: C:\Users\sakthimx\PycharmProjects\PerfKindleloganalyzer\assets\icons\win.ico
+Traceback (most recent call last):
+  File "C:\Users\sakthimx\PycharmProjects\PerfKindleloganalyzer\performance_dashboard\ui\launch_page.py", line 319, in open_selected_session
+    self.switch_to_dashboard(session_data)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\sakthimx\PycharmProjects\PerfKindleloganalyzer\performance_dashboard\main_window.py", line 70, in switch_to_dashboard
+    success, message = DataManager.create_session_file(session_data)
+                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\sakthimx\PycharmProjects\PerfKindleloganalyzer\performance_dashboard\logic\data_manager.py", line 72, in create_session_file
+    os.makedirs(session_info['project_path'])
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen os>", line 218, in makedirs
+  File "<frozen os>", line 218, in makedirs
+  File "<frozen os>", line 228, in makedirs
+PermissionError: [WinError 5] Access is denied: '/Users/sakthivelprabakaran'
+PS C:\Users\sakthimx\PycharmProjects\PerfKindleloganalyzer>

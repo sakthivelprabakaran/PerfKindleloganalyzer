@@ -28,8 +28,10 @@ from openpyxl.styles import Font, Alignment, PatternFill
 
 
 class FinalKindleLogAnalyzer(QMainWindow):
-    def __init__(self):
+    def __init__(self, back_to_launcher_callback=None, auth_token=None):
         super().__init__()
+        self.back_to_launcher_callback = back_to_launcher_callback
+        self.auth_token = auth_token
         self.state = StateManager()
         self.comparison_result_a = None
         self.comparison_result_b = None
@@ -38,7 +40,6 @@ class FinalKindleLogAnalyzer(QMainWindow):
                             format='%(asctime)s - %(levelname)s - %(message)s')
 
         self.setup_ui()
-        self.setup_styling()
         self.load_session()
 
     def setup_ui(self):
@@ -70,18 +71,21 @@ class FinalKindleLogAnalyzer(QMainWindow):
         panel = QGroupBox("📁 Input & Processing")
         layout = QVBoxLayout()
 
-        # Header with dark mode toggle
+        # Header with dark mode toggle and back button
         header_layout = QHBoxLayout()
+        
+        # Back button (if callback provided)
+        if self.back_to_launcher_callback:
+            back_btn = QPushButton("← Back")
+            back_btn.clicked.connect(self.back_to_launcher_callback)
+            back_btn.setFixedWidth(100)
+            header_layout.addWidget(back_btn)
 
         title_label = QLabel("Kindle Log Analyzer")
         title_label.setStyleSheet("font-size: 18px; font-weight: bold; padding: 10px;")
         title_label.setAlignment(Qt.AlignCenter)
         header_layout.addWidget(title_label)
-
-        self.dark_mode_toggle = QCheckBox("Dark Mode")
-        self.dark_mode_toggle.toggled.connect(self.toggle_dark_mode)
-        header_layout.addWidget(self.dark_mode_toggle)
-
+        header_layout.addStretch()
         layout.addLayout(header_layout)
 
         # Test Case and Settings
@@ -233,6 +237,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         layout.addWidget(export_group)
 
         layout.addStretch()
+
         panel.setLayout(layout)
         return panel
 
@@ -380,7 +385,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         results_layout = QVBoxLayout()
 
         controls_layout = QHBoxLayout()
-        self.compare_btn = QPushButton("⚖️ Compare Logs")
+        self.compare_btn = QPushButton("Compare Logs")
         self.compare_btn.clicked.connect(self.compare_logs)
         self.clear_comparison_btn = QPushButton("🗑️ Clear")
         self.clear_comparison_btn.clicked.connect(self.clear_comparison_fields)
@@ -395,7 +400,7 @@ class FinalKindleLogAnalyzer(QMainWindow):
         results_group.setLayout(results_layout)
         main_layout.addWidget(results_group)
 
-        self.tab_widget.addTab(self.comparison_tab, "⚖️ Comparison")
+        self.tab_widget.addTab(self.comparison_tab, "Comparison")
 
     def compare_logs(self):
         """Process and compare the two logs from the input boxes."""
@@ -511,55 +516,24 @@ class FinalKindleLogAnalyzer(QMainWindow):
         """Create a visual box for each iteration's waveform data"""
         box = QFrame()
         box.setFrameStyle(QFrame.StyledPanel)
-        box.setStyleSheet(f"""
-        QFrame {{
-            border: 2px solid {'#0d7377' if not self.state.dark_mode else '#14a085'};
-            border-radius: 8px;
-            padding: 10px;
-            margin: 5px;
-            background-color: {'#ffffff' if not self.state.dark_mode else '#404040'};
-        }}
-        QLabel {{
-            color: {'#333333' if not self.state.dark_mode else '#ffffff'};
-            font-size: 12px;
-        }}
-        """)
+        box.setObjectName("waveformBox")
 
         layout = QVBoxLayout(box)
 
         # Header
         header_label = QLabel(f"🔄 ITERATION_{result['iteration']:02d}")
-        header_label.setStyleSheet(f"""
-            font-weight: bold;
-            font-size: 14px;
-            color: {'#0d7377' if not self.state.dark_mode else '#14a085'};
-            padding: 5px;
-            background-color: {'#f0f8ff' if not self.state.dark_mode else '#2b2b2b'};
-            border-radius: 4px;
-        """)
+        header_label.setObjectName("waveformBoxHeader")
         header_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(header_label)
 
         # Duration - highlighted
         duration_label = QLabel(f"⏱️ Duration: {result['duration']:.3f} seconds")
-        duration_label.setStyleSheet(f"""
-            font-weight: bold;
-            background-color: yellow;
-            color: black;
-            padding: 3px;
-            border-radius: 3px;
-        """)
+        duration_label.setObjectName("highlightLabel")
         layout.addWidget(duration_label)
 
         # Selected waveform - highlighted
         selected_label = QLabel(f"🎯 Selected: {result['max_height_waveform']}")
-        selected_label.setStyleSheet(f"""
-            font-weight: bold;
-            background-color: yellow;
-            color: black;
-            padding: 3px;
-            border-radius: 3px;
-        """)
+        selected_label.setObjectName("highlightLabel")
         layout.addWidget(selected_label)
 
         # Start/Stop info
@@ -576,15 +550,9 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
             height_label = QLabel(height_text)
             if is_selected:
-                height_label.setStyleSheet("""
-                    background-color: yellow;
-                    color: black;
-                    font-weight: bold;
-                    padding: 2px;
-                    border-radius: 2px;
-                """)
+                height_label.setObjectName("highlightLabel")
             else:
-                height_label.setStyleSheet("font-size: 11px; padding: 1px;")
+                height_label.setObjectName("normalLabel")
 
             layout.addWidget(height_label)
 
@@ -702,23 +670,6 @@ class FinalKindleLogAnalyzer(QMainWindow):
 
         self.waveform_table.resizeColumnsToContents()
         self.waveform_table.resizeRowsToContents()
-
-    def toggle_dark_mode(self, checked):
-        """Toggle between dark and light mode"""
-        self.state.dark_mode = checked
-        self.setup_styling()
-        # Update waveform boxes with new styling
-        if self.state.results or self.state.batch_results:
-            self.update_waveform_boxes()
-
-    def setup_styling(self):
-        """Setup styling with dark mode support"""
-        if self.state.dark_mode:
-            with open('ui/dark_mode.qss', 'r') as f:
-                self.setStyleSheet(f.read())
-        else:
-            with open('ui/light_mode.qss', 'r') as f:
-                self.setStyleSheet(f.read())
 
     def on_calculation_mode_changed(self):
         """Handle calculation mode change"""
