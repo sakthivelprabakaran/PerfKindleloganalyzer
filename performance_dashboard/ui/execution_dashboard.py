@@ -756,7 +756,7 @@ class ExecutionDashboard(QWidget):
                     project_name = self.state.current_session.get('project', 'Unknown') if self.state.current_session else 'Unknown'
                     executor_username = self.user_context.get('username', 'unknown') if self.user_context else 'unknown'
                     session_file_name = self.state.current_session.get('file_name', 'unknown') if self.state.current_session else 'unknown'
-                    n_points = self.calculate_n_points(self.current_test_case)
+                    n_points = int(self.current_test_case.get("N-Points", 0))
                     
                     print(f"📊 Logging productivity: {executor_username} - {tc_id} - {n_points} points (Suite: {suite_name})")
                     

@@ -311,9 +311,9 @@ class AuditWindow(QWidget):
         
         # Assignments Table
         self.assignments_table = QTableWidget()
-        self.assignments_table.setColumnCount(6)
+        self.assignments_table.setColumnCount(7)
         self.assignments_table.setHorizontalHeaderLabels([
-            "Project", "Suite", "Executor", "BRD Status", "Actions", "Live Monitor"
+            "Project", "Suite", "Executor", "BRD Status", "Actions", "Recalculate", "Live Monitor"
         ])
         self.assignments_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         layout.addWidget(self.assignments_table)
@@ -573,11 +573,18 @@ class AuditWindow(QWidget):
             upload_btn.setStyleSheet("padding: 5px; background-color: #007bff; color: white;")
             self.assignments_table.setCellWidget(i, 4, upload_btn)
             
+            # Recalculate BRD Button
+            recalc_btn = QPushButton("🔄 Recalc BRD")
+            recalc_btn.clicked.connect(lambda checked, a=assignment: self.recalculate_brd(a))
+            recalc_btn.setStyleSheet("padding: 5px; background-color: #28a745; color: white;")
+            recalc_btn.setToolTip("Recalculate BRD references for existing results")
+            self.assignments_table.setCellWidget(i, 5, recalc_btn)
+            
             # Live Monitor Button
             monitor_btn = QPushButton("🔴 Monitor")
             monitor_btn.clicked.connect(lambda checked, a=assignment: self.open_live_monitor_for_assignment(a))
             monitor_btn.setStyleSheet("padding: 5px; background-color: #dc3545; color: white;")
-            self.assignments_table.setCellWidget(i, 5, monitor_btn)
+            self.assignments_table.setCellWidget(i, 6, monitor_btn)
 
     def upload_brd(self, assignment):
         """Handles BRD upload for a specific assignment."""
@@ -626,6 +633,87 @@ class AuditWindow(QWidget):
                 QMessageBox.warning(self, "Upload Failed", f"Server returned error: {response.text}")
         except Exception as e:
             QMessageBox.critical(self, "Upload Error", f"Failed to upload BRD: {e}")
+
+    def recalculate_brd(self, assignment):
+        """Recalculates BRD references for all existing results for this assignment."""
+        project = assignment['project']
+        suite = assignment['suite']
+        
+        # Confirm action
+        reply = QMessageBox.question(
+            self,
+            "Recalculate BRD References",
+            f"This will recalculate BRD references and deviations for all existing results in:\n\n"
+            f"Project: {project}\n"
+            f"Suite: {suite}\n\n"
+            f"This is useful when BRD was uploaded after tests were executed.\n\n"
+            f"Continue?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply != QMessageBox.Yes:
+            return
+        
+        try:
+            import requests
+            server_url = self.auditor_server_input.text().strip()
+            headers = {"Authorization": f"Bearer {self.auth_token}"} if self.auth_token else {}
+            
+            # Call recalculate endpoint
+            response = requests.post(
+                f"{server_url}/recalculate_brd/{project}/{suite}",
+                headers=headers,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                QMessageBox.information(
+                    self,
+                    "Recalculation Complete",
+                    f"✅ BRD references recalculated successfully!\n\n"
+                    f"Project: {project}\n"
+                    f"Suite: {suite}\n\n"
+                    f"Updated: {result.get('updated_count', 0)} results\n"
+                    f"Skipped: {result.get('skipped_count', 0)} results\n"
+                    f"Total: {result.get('total_results', 0)} results\n\n"
+                    f"The Live Monitor will now show updated BRD values."
+                )
+            elif response.status_code == 404:
+                QMessageBox.warning(
+                    self,
+                    "BRD Not Found",
+                    f"No BRD found for {project} / {suite}.\n\n"
+                    f"Please upload a BRD first before recalculating."
+                )
+            elif response.status_code == 403:
+                QMessageBox.warning(
+                    self,
+                    "Permission Denied",
+                    "You don't have permission to recalculate BRD.\n\n"
+                    "Only auditors and admins can perform this action."
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Recalculation Failed",
+                    f"Server returned error:\n{response.text}"
+                )
+        except requests.exceptions.Timeout:
+            QMessageBox.critical(
+                self,
+                "Timeout",
+                "Recalculation request timed out.\n\n"
+                "This may take longer for large datasets. Please try again."
+            )
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Recalculation Error",
+                f"Failed to recalculate BRD: {e}"
+            )
+
 
     def open_general_live_monitor(self):
         """Opens Live Monitor without any filters (shows all results)."""

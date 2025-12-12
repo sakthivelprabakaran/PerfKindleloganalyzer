@@ -363,8 +363,9 @@ class LauncherScreen(QWidget):
                 self.tasks_data = {}
                 
                 for task in tasks:
-                    # Format display: "Kindle P0 → Alice (Auditor)"
-                    display_text = f"{task['project']} {task['suite']} → {task['auditor_username']} (Auditor)"
+                    # Format display: "J19.1 P0 [Kindle Paperwhite] → Alice (Auditor)"
+                    device_info = f" [{task['device_name']}]" if task.get('device_name') else ""
+                    display_text = f"{task['project']} {task['suite']}{device_info} → {task['auditor_username']} (Auditor)"
                     self.assigned_tasks_combo.addItem(display_text)
                     self.tasks_data[display_text] = task
                     

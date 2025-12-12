@@ -585,17 +585,30 @@ def submit_result(result: ResultCreate, current_user: User = Depends(get_current
             AuditorBRD.project == result.project_name
         ).order_by(AuditorBRD.uploaded_at.desc()).first()
         
+        print(f"🔍 DEBUG: BRD Lookup for suite='{suite}', project='{result.project_name}'")
+        print(f"🔍 DEBUG: BRD record found: {brd_record is not None}")
+        
         if brd_record and os.path.exists(brd_record.brd_file_path):
+            print(f"🔍 DEBUG: BRD file path: {brd_record.brd_file_path}")
             try:
                 # Read BRD Excel file
+                print(f"🔍 DEBUG: Reading BRD Excel, looking for sheet: '{suite}'")
                 df = pd.read_excel(brd_record.brd_file_path, sheet_name=suite)
+                print(f"🔍 DEBUG: BRD sheet loaded. Rows: {len(df)}, Columns: {list(df.columns)}")
                 
                 # Find matching test case
+                print(f"🔍 DEBUG: Looking for Test Case ID: '{result.test_case_id}'")
+                print(f"🔍 DEBUG: Test Case IDs in BRD: {df['Test Case ID'].tolist()[:5]}...")  # Show first 5
+                
                 matching_row = df[df['Test Case ID'] == result.test_case_id]
+                print(f"🔍 DEBUG: Matching rows found: {len(matching_row)}")
                 
                 if not matching_row.empty:
                     # Read Reference Value (BRD)
-                    brd_reference = float(matching_row.iloc[0]['Reference Value'])
+                    ref_val_raw = matching_row.iloc[0]['Reference Value']
+                    print(f"🔍 DEBUG: Reference Value (raw): {ref_val_raw}")
+                    brd_reference = float(ref_val_raw)
+                    print(f"✅ DEBUG: BRD Reference set to: {brd_reference}")
                     
                     # Read Previous Value if column exists
                     previous_value = None
@@ -622,8 +635,21 @@ def submit_result(result: ResultCreate, current_user: User = Depends(get_current
                             auto_status = "Pending"   # < 10% → Needs auditor review
                         else:
                             auto_status = "Pending"   # ≥ 10% → Flagged for attention
+                else:
+                    print(f"⚠️ DEBUG: No matching row found for Test Case ID '{result.test_case_id}'")
+            except KeyError as e:
+                print(f"❌ DEBUG: KeyError reading BRD - Missing column: {e}")
+            except ValueError as e:
+                print(f"❌ DEBUG: ValueError reading BRD - Invalid data format: {e}")
             except Exception as e:
-                print(f"❌ Error reading BRD: {e}")
+                print(f"❌ DEBUG: Error reading BRD: {type(e).__name__}: {e}")
+        else:
+            if not brd_record:
+                print(f"⚠️ DEBUG: No BRD record found in database for suite='{suite}', project='{result.project_name}'")
+            elif not os.path.exists(brd_record.brd_file_path):
+                print(f"⚠️ DEBUG: BRD file not found at path: {brd_record.brd_file_path}")
+    else:
+        print(f"⚠️ DEBUG: No suite_name provided in result")
     
     # **Update-or-Create Logic**: Check if result already exists for this test case + executor + project + suite
     existing_result = db.query(TestResult).filter(
@@ -767,6 +793,7 @@ def create_task_assignment(assignment: TaskAssignmentCreate, current_user: User 
     db_task = TaskAssignment(
         project=assignment.project,
         suite=assignment.suite,
+        device_name=assignment.device_name,  # Save device name
         executor_username=assignment.executor_username,
         auditor_username=assignment.auditor_username,
         status="Assigned"
@@ -1114,6 +1141,133 @@ def check_brd_status(project: str, suite: str, db: Session = Depends(get_db)):
             "version": brd.version
         }
     return {"exists": False}
+
+@app.post("/recalculate_brd/{project}/{suite}")
+@retry_on_db_lock_async()
+async def recalculate_brd(
+    project: str, 
+    suite: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Recalculates BRD references and deviations for all existing results.
+    Useful when BRD is uploaded after tests have been executed.
+    """
+    # Verify user has auditor or admin role
+    if "auditor" not in current_user.role and "admin" not in current_user.role:
+        raise HTTPException(status_code=403, detail="Only auditors can recalculate BRD")
+    
+    print(f"🔄 Recalculating BRD for project='{project}', suite='{suite}'")
+    
+    # Find the active BRD for this suite and project
+    brd_record = db.query(AuditorBRD).filter(
+        AuditorBRD.suite == suite,
+        AuditorBRD.project == project,
+        AuditorBRD.is_active == 1
+    ).order_by(AuditorBRD.uploaded_at.desc()).first()
+    
+    if not brd_record:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"No BRD found for project '{project}' and suite '{suite}'"
+        )
+    
+    if not os.path.exists(brd_record.brd_file_path):
+        raise HTTPException(
+            status_code=404, 
+            detail=f"BRD file not found at path: {brd_record.brd_file_path}"
+        )
+    
+    # Get all results for this project and suite
+    results = db.query(TestResult).filter(
+        TestResult.project_name == project,
+        TestResult.suite_name == suite
+    ).all()
+    
+    if not results:
+        return {
+            "status": "success",
+            "message": f"No results found for project '{project}' and suite '{suite}'",
+            "updated_count": 0
+        }
+    
+    print(f"📊 Found {len(results)} results to recalculate")
+    
+    # Read BRD Excel file
+    try:
+        df = pd.read_excel(brd_record.brd_file_path, sheet_name=suite)
+        print(f"✅ BRD loaded. Rows: {len(df)}, Columns: {list(df.columns)}")
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error reading BRD file: {str(e)}"
+        )
+    
+    # Recalculate for each result
+    updated_count = 0
+    skipped_count = 0
+    
+    for result in results:
+        try:
+            # Find matching test case in BRD
+            matching_row = df[df['Test Case ID'] == result.test_case_id]
+            
+            if matching_row.empty:
+                print(f"⚠️ No BRD match for Test Case ID: {result.test_case_id}")
+                skipped_count += 1
+                continue
+            
+            # Extract BRD reference value
+            ref_val_raw = matching_row.iloc[0]['Reference Value']
+            brd_reference = float(ref_val_raw)
+            
+            # Extract previous value if available
+            previous_value = None
+            deviation_from_previous = None
+            if 'Previous Value' in df.columns:
+                prev_val_raw = matching_row.iloc[0]['Previous Value']
+                if pd.notna(prev_val_raw):
+                    try:
+                        previous_value = float(prev_val_raw)
+                        if previous_value > 0:
+                            deviation_from_previous = ((result.value - previous_value) / previous_value) * 100
+                    except (ValueError, TypeError):
+                        pass
+            
+            # Calculate deviation from BRD
+            deviation_percent = None
+            if brd_reference > 0:
+                deviation_percent = ((result.value - brd_reference) / brd_reference) * 100
+            
+            # Update the result
+            result.brd_reference = brd_reference
+            result.deviation_percent = deviation_percent
+            result.previous_value = previous_value
+            result.deviation_from_previous = deviation_from_previous
+            
+            updated_count += 1
+            print(f"✅ Updated {result.test_case_id}: BRD={brd_reference}, Deviation={deviation_percent:.2f}%" if deviation_percent else f"✅ Updated {result.test_case_id}: BRD={brd_reference}")
+            
+        except Exception as e:
+            print(f"❌ Error updating result {result.test_case_id}: {e}")
+            skipped_count += 1
+            continue
+    
+    # Commit all changes
+    db.commit()
+    
+    print(f"🎉 Recalculation complete! Updated: {updated_count}, Skipped: {skipped_count}")
+    
+    return {
+        "status": "success",
+        "message": f"Recalculated BRD references for {updated_count} results",
+        "updated_count": updated_count,
+        "skipped_count": skipped_count,
+        "total_results": len(results)
+    }
+
+
 
 # =============================================================================
 # PRODUCTIVITY TRACKING ENDPOINTS
